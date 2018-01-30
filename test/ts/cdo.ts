@@ -11,15 +11,11 @@ import * as utils from "./test_utils/utils";
 import {DebtKernelContract} from "../../types/generated/debt_kernel";
 import {DebtRegistryContract} from "../../types/generated/debt_registry";
 import {DebtTokenContract} from "../../types/generated/debt_token";
+import {DummyTokenContract} from "../../types/generated/dummy_token";
+import {DummyTokenRegistryContract} from "../../types/generated/dummy_token_registry";
 import {RepaymentRouterContract} from "../../types/generated/repayment_router";
 import {SimpleInterestTermsContractContract} from "../../types/generated/simple_interest_terms_contract";
 import {TokenTransferProxyContract} from "../../types/generated/token_transfer_proxy";
-
-import {ZeroEx} from "0x.js";
-import {ZeroX_DummyTokenContract} from "../../types/generated/zerox_dummytoken";
-import {ZeroX_ExchangeContract} from "../../types/generated/zerox_exchange";
-import {ZeroX_TokenRegistryContract} from "../../types/generated/zerox_tokenregistry";
-import {ZeroX_TokenTransferProxyContract} from "../../types/generated/zerox_tokentransferproxy";
 
 import {DebtKernelErrorCodes} from "../../types/errors";
 import {DebtOrder, SignedDebtOrder} from "../../types/kernel/debt_order";
@@ -47,7 +43,7 @@ contract("Collateralized Debt Obligation", async (ACCOUNTS) => {
     let repaymentRouter: RepaymentRouterContract;
     let kernel: DebtKernelContract;
     let debtToken: DebtTokenContract;
-    let principalToken: ZeroX_DummyTokenContract;
+    let principalToken: DummyTokenContract;
     let termsContract: SimpleInterestTermsContractContract;
     let tokenTransferProxy: TokenTransferProxyContract;
 
@@ -80,21 +76,10 @@ contract("Collateralized Debt Obligation", async (ACCOUNTS) => {
     const TX_DEFAULTS = { from: CONTRACT_OWNER, gas: 4000000 };
 
     before(async () => {
-        // Initialize 0x.js library and retrieve deployed dummy tokens
-        const zeroExExchangeContract = await ZeroX_ExchangeContract.deployed(web3, TX_DEFAULTS);
-        const zeroExTokenRegistryContract = await ZeroX_TokenRegistryContract.deployed(web3, TX_DEFAULTS);
-        const zeroExTokenTransferProxyContract = await ZeroX_TokenTransferProxyContract.deployed(web3, TX_DEFAULTS);
+        const dummyTokenRegistryContract = await DummyTokenRegistryContract.deployed(web3, TX_DEFAULTS);
+        const dummyREPTokenAddress = await dummyTokenRegistryContract.getTokenAddress.callAsync("REP");
 
-        const zeroEx = new ZeroEx(web3.currentProvider, {
-            exchangeContractAddress: zeroExExchangeContract.address,
-            networkId: parseInt(web3.version.network, 10),
-            tokenRegistryContractAddress: zeroExTokenRegistryContract.address,
-            tokenTransferProxyContractAddress: zeroExTokenTransferProxyContract.address,
-        });
-
-        const dummyREPTokenAddress = await zeroEx.tokenRegistry.getTokenAddressBySymbolIfExistsAsync("REP");
-
-        principalToken = await ZeroX_DummyTokenContract.at(dummyREPTokenAddress, web3, TX_DEFAULTS);
+        principalToken = await DummyTokenContract.at(dummyREPTokenAddress, web3, TX_DEFAULTS);
 
         kernel = await DebtKernelContract.deployed(web3, TX_DEFAULTS);
         debtToken = await DebtTokenContract.deployed(web3, TX_DEFAULTS);

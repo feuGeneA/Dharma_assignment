@@ -57,8 +57,6 @@ Start `testrpc`:
 yarn chain
 ```
 
-**Wait until you see `Dependency contract migrations complete, test chain is ready for use!` before running tests.**
-
 Run `truffle` tests:
 ```
 yarn test
