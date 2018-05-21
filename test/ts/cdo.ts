@@ -14,7 +14,7 @@ import { DebtTokenContract } from "../../types/generated/debt_token";
 import { DummyTokenContract } from "../../types/generated/dummy_token";
 import { TokenRegistryContract } from "../../types/generated/token_registry";
 import { RepaymentRouterContract } from "../../types/generated/repayment_router";
-import { SimpleInterestTermsContractContract as SimpleInterestTermsContract } from "../../types/generated/simple_interest_terms_contract";
+import { SimpleInterestTermsContractContract as SimpleInterestTermsContract } from "../../types/generated/simple_interest_terms_contract"; // tslint:disable-line:max-line-length
 import { TokenTransferProxyContract } from "../../types/generated/token_transfer_proxy";
 
 import { DebtKernelErrorCodes } from "../../types/errors";
@@ -226,5 +226,26 @@ contract("Collateralized Debt Obligation", async (ACCOUNTS) => {
                 debtToken.ownerOf.callAsync(new BigNumber(agreementId)),
             ).to.eventually.equal(CREDITOR_1);
         });
+
+        it("should pay senior in full and mezzanine in part when 70% of principal has been repaid", async () => {
+            /* from Expectations: As an illustrative example, if the total
+             * amount of principal + interest that is expected to flow into a
+             * CDO is $10, and only $7 has been repaid, each of the 6 Senior
+             * Tranche token holders will be entitled to receive $1 each,
+             * whereas each of the 4 Mezzanine Tranche token holders will be
+             * entitled to receive $0.25 each. */
+        });
+
+        it("should pay only senior tranche when only 30% of principal has been repaid", async () => {
+            /* from Expectations:  As an illustrative example, if the total
+             * amount of principal + interest that is expected to flow into a
+             * CDO is $10, and only ... $3 has been repaid, the Senior Tranche
+             * token holders will be entitled to $0.50 each, while the
+             * Mezzanine Tranche token holders will be entitled to nothing. */
+        });
+
+        /* to transfer ownership of a DebtToken, consider using
+         * debtToken.transfer like in test/ts/unit/("user transfers token he
+         * owns").  */
     });
 });
