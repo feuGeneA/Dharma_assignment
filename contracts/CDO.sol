@@ -5,7 +5,7 @@ import "./DebtRegistry.sol";
 import "./TermsContract.sol";
 
 // External dependencies
-import { ERC721BasicToken } from "zeppelin-solidity/contracts/token/ERC721/ERC721BasicToken.sol";
+import "zeppelin-solidity/contracts/token/ERC721/ERC721BasicToken.sol";
 import "zeppelin-solidity/contracts/token/ERC721/ERC721Receiver.sol";
 import "zeppelin-solidity/contracts/token/ERC721/ERC721Token.sol";
 
@@ -58,22 +58,29 @@ contract CDOFactory {
  *     interest, and the mezzanine tranche is paid out second with the
  *     remainder of the principal + interest.  Deployed via CDOFactory
  *     contract.  Caller of CDOFactory.create() has sole permission to add
- *     underlying `DebtToken`s and to finalize the contract.  will be have sole
+ *     underlying `DebtToken`s and to finalize the contract, and sole
  *     permission to call CDO.finalize().
  */
 contract CDO is ERC721Receiver {
-    TrancheToken internal trancheToken;
-
-    address public admin; /// only one permissioned to call `finalize()`
-
-    bool public finalized; /// whether the agreement has been finalized
-
-    uint internal withdrawn;
-    DebtRegistry public debtRegistry;
+    address public admin; /// Only the admin can collateralize and finalize
 
     uint256[] public underlyingDebts; /// references to `DebtToken` `tokenId`s
 
+    /**
+     * total expected repayment from underlying debts, determined at the time
+     * of collateralization.
+     */
     uint public expectedRepayment;
+
+    uint internal withdrawn;
+
+    /**
+     * Whether the agreement has been finalized; that is, whether the admin is
+     * finished transferring underlying `DebtToken`s to this contract.
+     */
+    bool public finalized;
+
+    TrancheToken internal trancheToken;
 
     // mapping of tranche token ID to repayment entitlements
     mapping(uint256 => uint) internal entitlements;
@@ -81,6 +88,7 @@ contract CDO is ERC721Receiver {
     uint256[6] internal seniors; // tranche token identifiers
     uint256[4] internal mezzanine; // tranche token identifiers
 
+    DebtRegistry internal debtRegistry; /// to get `DebtToken` repayment info
 
     function CDO(address _debtRegistry)
         public
@@ -90,15 +98,13 @@ contract CDO is ERC721Receiver {
         debtRegistry = DebtRegistry(_debtRegistry);
 
         for (uint i=0; i < seniors.length; i++) {
-            uint256 senior = trancheToken.create(this);
-            entitlements[senior] = 0;
-            seniors[i] = senior;
+            seniors[i] = trancheToken.create(this);
+            entitlements[seniors[i]] = 0;
         }
 
         for (uint j=0; j < mezzanine.length; j++) {
-            uint256 mez = trancheToken.create(this);
-            entitlements[mez] = 0;
-            mezzanine[j] = mez;
+            mezzanine[j] = trancheToken.create(this);
+            entitlements[mezzanine[j]] = 0;
         }
     }
 
@@ -216,7 +222,7 @@ contract CDO is ERC721Receiver {
     {
         require(!finalized);
         require(_from == admin);
-        // require that token is a DebtToken ?
+        // TODO: consider requiring token to be a DebtToken. (but how?)
 
         TermsContract termsContract =
             TermsContract(debtRegistry.getTermsContract(bytes32(_tokenId)));
