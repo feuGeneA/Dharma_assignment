@@ -68,12 +68,12 @@ contract CDO is ERC721Receiver {
 
     bool public finalized; /// whether the agreement has been finalized
 
+    uint internal withdrawn;
     DebtRegistry public debtRegistry;
 
     uint256[] public underlyingDebts; /// references to `DebtToken` `tokenId`s
 
     uint public expectedRepayment;
-    uint public repaid; /// how much has been repaid
 
     // mapping of tranche token ID to repayment entitlements
     mapping(uint256 => uint) internal entitlements;
@@ -81,7 +81,6 @@ contract CDO is ERC721Receiver {
     uint256[6] internal seniors; // tranche token identifiers
     uint256[4] internal mezzanine; // tranche token identifiers
 
-    event EntitlementUpdated(uint256 trancheTokenId, uint amount);
 
     function CDO(address _debtRegistry)
         public
@@ -106,55 +105,102 @@ contract CDO is ERC721Receiver {
     /**
      * Receive debt repayment
      */
-    function ()
+    function () public payable {}
+
+    function totalExpectedSeniorPayout()
         public
-        payable
+        view
+        returns (uint)
     {
-        uint toPay = msg.value;
+        return expectedRepayment*6/10;
+    }
 
-        uint expectedSeniorEntitlement = (expectedRepayment*6/10)-repaid;
+    function remainingExpectedSeniorPayout()
+        public
+        view
+        returns (uint)
+    {
+        totalExpectedSeniorPayout() - withdrawn - seniorEntitlements();
+    }
 
-        if (expectedSeniorEntitlement > 0) {
-            // senior tranche is entitled to some amount of this repayment
-
-            uint seniorAllotment = expectedSeniorEntitlement;
-            if (seniorAllotment > toPay) {
-                seniorAllotment = toPay;
-            }
-
-            for (uint i=0; i < seniors.length; i++) {
-                // TODO: consider whether truncation is a potential problem in
-                // the division here
-                entitlements[seniors[i]] += seniorAllotment/seniors.length;
-                EntitlementUpdated(seniors[i], entitlements[seniors[i]]);
-            }
-
-            toPay -= seniorAllotment;
+    function seniorEntitlements()
+        public
+        view
+        returns (uint)
+    {
+        uint _seniorEntitlements;
+        for (uint i=0; i < seniors.length; i++) {
+            _seniorEntitlements += entitlements[seniors[i]];
         }
+        return _seniorEntitlements;
+    }
 
-        if (toPay > 0) {
-            // repay mezzanine tranche
-            for (uint j=0; j < mezzanine.length; j++) {
-                // TODO: consider whether truncation is a potential problem in
-                // the division here
-                entitlements[mezzanine[j]] += toPay/mezzanine.length;
-                EntitlementUpdated(mezzanine[j], entitlements[mezzanine[j]]);
-            }
+    function mezzanineEntitlements()
+        public
+        view
+        returns (uint)
+    {
+        uint _mezzanineEntitlements;
+        for (uint i=0; i < mezzanine.length; i++) {
+            _mezzanineEntitlements += entitlements[mezzanine[i]];
         }
+        return _mezzanineEntitlements;
+    }
 
-        repaid += msg.value;
+    function totalEntitlements()
+        public
+        view
+        returns (uint)
+    {
+        return seniorEntitlements() + mezzanineEntitlements();
     }
 
     function withdraw(uint256 trancheTokenId, address _to)
         public
     {
         require(trancheToken.ownerOf(trancheTokenId) == msg.sender);
-        require(entitlements[trancheTokenId] > 0);
+
+        // first update `entitlements` with any repayments that have come in
+        // since the last call to this function.
+
+        uint unallocatedEntitlements = this.balance - totalEntitlements();
+
+        if (unallocatedEntitlements > 0) {
+
+            if (remainingExpectedSeniorPayout() > 0) {
+                uint unallocatedSeniorEntitlements =
+                    (remainingExpectedSeniorPayout() < unallocatedEntitlements)
+                    ? remainingExpectedSeniorPayout() : unallocatedEntitlements;
+
+                for (uint i=0; i < seniors.length; i++) {
+                    // TODO: determine if division truncation is an issue here
+                    entitlements[seniors[i]] +=
+                        unallocatedSeniorEntitlements/seniors.length;
+                }
+
+                unallocatedEntitlements -= unallocatedSeniorEntitlements;
+            }
+
+            if (unallocatedEntitlements > 0) {
+                for (uint j=0; j < mezzanine.length; j++) {
+                    // TODO: determine if division truncation is an issue here
+                    entitlements[mezzanine[i]] +=
+                        unallocatedEntitlements/mezzanine.length;
+                }
+            }
+        }
+
+        // done updating `entitlements`
 
         uint entitlement = entitlements[trancheTokenId];
+
+        require(entitlement > 0);
+
         entitlements[trancheTokenId] = 0;
+
+        withdrawn += entitlement;
+
         _to.transfer(entitlement);
-        EntitlementUpdated(trancheTokenId, 0);
     }
 
     /**
