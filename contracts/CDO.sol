@@ -246,6 +246,8 @@ contract CDO is ERC721Receiver {
             uint256[6] _senior,
             uint256[4] _mezzanine)
     {
+        require(msg.sender == admin);
+        require(underlyingDebts.length >= 3);
         // TODO: consider anything else that might need to be done here.
         finalized = true;
         return (seniors, mezzanine);
