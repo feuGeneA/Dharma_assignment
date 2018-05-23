@@ -42,11 +42,13 @@ contract TrancheToken is ERC721Token {
  *     permission call that contract's `finalize()` method.
  */
 contract CDOFactory {
-    function create(DebtRegistry debtRegistry)
+    function CDOFactory() public {}
+
+    function create(address termsContract)
         public
         returns (address)
     {
-        return new CDO(debtRegistry);
+        return new CDO(TermsContract(termsContract));
     }
 }
 
@@ -90,14 +92,18 @@ contract CDO is ERC721Receiver {
     uint256[6] internal seniors; // tranche token identifiers
     uint256[4] internal mezzanine; // tranche token identifiers
 
-    DebtRegistry internal debtRegistry; /// to get `DebtToken` repayment info
+    TermsContract internal termsContract;
 
-    function CDO(address _debtRegistry)
+    function CDO(
+        TermsContract _termsContract /// common to all underlying debts
+    )
         public
     {
         admin = msg.sender;
 
-        debtRegistry = DebtRegistry(_debtRegistry);
+        termsContract = _termsContract;
+
+        trancheToken = new TrancheToken();
 
         for (uint i=0; i < seniors.length; i++) {
             seniors[i] = trancheToken.create(this);
@@ -225,9 +231,6 @@ contract CDO is ERC721Receiver {
         require(!finalized);
         require(_from == admin);
         // TODO: consider requiring token to be a DebtToken. (but how?)
-
-        TermsContract termsContract =
-            TermsContract(debtRegistry.getTermsContract(bytes32(_tokenId)));
 
         // TODO: determine whether getExpectedRepaymentValue is really
         // appropriate here, given that it's not a constant function.

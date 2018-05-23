@@ -31,7 +31,11 @@ import { TxDataPayable } from "../../types/common";
 
 import leftPad = require("left-pad");
 
+import { CDOFactoryContract } from "../../types/generated/c_d_o_factory";
+import { CDOContract } from "../../types/generated/cdo";
 import { TrancheTokenContract } from "../../types/generated/tranche_token";
+import { TermsContractContract as TermsContract } from "../../types/generated/terms_contract";
+
 // Configure BigNumber exponentiation
 BigNumberSetup.configure();
 
@@ -68,6 +72,7 @@ contract("Collateralized Debt Obligation", async (ACCOUNTS) => {
     let principalToken: DummyTokenContract;
     let termsContract: SimpleInterestTermsContract;
     let tokenTransferProxy: TokenTransferProxyContract;
+    let cdoFactory: CDOFactoryContract;
 
     let orderFactory: DebtOrderFactory;
 
@@ -105,6 +110,7 @@ contract("Collateralized Debt Obligation", async (ACCOUNTS) => {
         tokenTransferProxy = await TokenTransferProxyContract.deployed(web3, TX_DEFAULTS);
         termsContract = await SimpleInterestTermsContract.deployed(web3, TX_DEFAULTS);
         repaymentRouter = await RepaymentRouterContract.deployed(web3, TX_DEFAULTS);
+        cdoFactory = await CDOFactoryContract.deployed(web3, TX_DEFAULTS);
 
         await principalToken.setBalance.sendTransactionAsync(CREDITOR_1, Units.ether(100));
         await principalToken.setBalance.sendTransactionAsync(CREDITOR_2, Units.ether(100));
@@ -249,6 +255,13 @@ contract("Collateralized Debt Obligation", async (ACCOUNTS) => {
         });
     });
 
+    it("should support instantiation", async () => {
+        const TX = TX_DEFAULTS;
+        TX.gas += 125000;
+        const cdo =
+            await cdoFactory.create.sendTransactionAsync(
+                termsContract.address, TX);
+    });
 
     // it("should pay senior in full and mezzanine in part when 70% of principal has been repaid", async () => {
         /* from Expectations: As an illustrative example, if the total
