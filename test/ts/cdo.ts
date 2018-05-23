@@ -73,6 +73,7 @@ contract("Collateralized Debt Obligation", async (ACCOUNTS) => {
     let termsContract: SimpleInterestTermsContract;
     let tokenTransferProxy: TokenTransferProxyContract;
     let cdoFactory: CDOFactoryContract;
+    let trancheToken: TrancheTokenContract;
 
     let orderFactory: DebtOrderFactory;
 
@@ -111,6 +112,7 @@ contract("Collateralized Debt Obligation", async (ACCOUNTS) => {
         termsContract = await SimpleInterestTermsContract.deployed(web3, TX_DEFAULTS);
         repaymentRouter = await RepaymentRouterContract.deployed(web3, TX_DEFAULTS);
         cdoFactory = await CDOFactoryContract.deployed(web3, TX_DEFAULTS);
+        trancheToken = await TrancheTokenContract.deployed(web3, TX_DEFAULTS);
 
         await principalToken.setBalance.sendTransactionAsync(CREDITOR_1, Units.ether(100));
         await principalToken.setBalance.sendTransactionAsync(CREDITOR_2, Units.ether(100));
@@ -256,11 +258,11 @@ contract("Collateralized Debt Obligation", async (ACCOUNTS) => {
     });
 
     it("should support instantiation", async () => {
-        const TX = TX_DEFAULTS;
-        TX.gas += 125000;
         const cdo =
             await cdoFactory.create.sendTransactionAsync(
-                termsContract.address, TX);
+                termsContract.address,
+                trancheToken.address,
+                TX_DEFAULTS);
     });
 
     // it("should pay senior in full and mezzanine in part when 70% of principal has been repaid", async () => {

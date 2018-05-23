@@ -44,11 +44,13 @@ contract TrancheToken is ERC721Token {
 contract CDOFactory {
     function CDOFactory() public {}
 
-    function create(address termsContract)
+    function create(address termsContract, address trancheToken)
         public
         returns (address)
     {
-        return new CDO(TermsContract(termsContract));
+        return new CDO(
+            TermsContract(termsContract),
+            TrancheToken(trancheToken));
     }
 }
 
@@ -95,7 +97,8 @@ contract CDO is ERC721Receiver {
     TermsContract internal termsContract;
 
     function CDO(
-        TermsContract _termsContract /// common to all underlying debts
+        TermsContract _termsContract, /// common to all underlying debts
+        TrancheToken _trancheToken
     )
         public
     {
@@ -103,7 +106,7 @@ contract CDO is ERC721Receiver {
 
         termsContract = _termsContract;
 
-        trancheToken = new TrancheToken();
+        trancheToken = _trancheToken;
 
         for (uint i=0; i < seniors.length; i++) {
             seniors[i] = trancheToken.create(this);
