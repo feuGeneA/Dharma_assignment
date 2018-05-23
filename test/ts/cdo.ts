@@ -31,6 +31,7 @@ import { TxDataPayable } from "../../types/common";
 
 import leftPad = require("left-pad");
 
+import { TrancheTokenContract } from "../../types/generated/tranche_token";
 // Configure BigNumber exponentiation
 BigNumberSetup.configure();
 
@@ -39,6 +40,26 @@ ChaiSetup.configure();
 const expect = chai.expect;
 
 const simpleInterestTermsContract = artifacts.require("SimpleInterestTermsContract");
+
+contract("Tranche token", (ACCOUNTS) => {
+    const CONTRACT_OWNER = ACCOUNTS[0];
+    const TX_DEFAULTS = { from: CONTRACT_OWNER, gas: 4000000 };
+
+    let trancheTokenContract: TrancheTokenContract;
+
+    before(async () => {
+        trancheTokenContract = await TrancheTokenContract.deployed(web3, TX_DEFAULTS);
+    });
+
+    it("should cleanly create()", async () => {
+        const tokenId1 = await trancheTokenContract.create.sendTransactionAsync(CONTRACT_OWNER, TX_DEFAULTS);
+        expect(tokenId1).to.be.a("string");
+
+        const tokenId2 = await trancheTokenContract.create.sendTransactionAsync(CONTRACT_OWNER, TX_DEFAULTS);
+        expect(tokenId2).to.be.a("string");
+        expect(tokenId2).to.not.equal(tokenId1);
+    });
+});
 
 contract("Collateralized Debt Obligation", async (ACCOUNTS) => {
     let repaymentRouter: RepaymentRouterContract;

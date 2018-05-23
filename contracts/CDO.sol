@@ -26,9 +26,11 @@ contract TrancheToken is ERC721Token {
         public
         returns (uint256) // tokenId
     {
-        super._mint(msg.sender, _tokenIdCounter);
-        cdos[_tokenIdCounter] = cdo;
+        uint256 tokenId = _tokenIdCounter;
+        super._mint(msg.sender, tokenId);
+        cdos[tokenId] = cdo;
         _tokenIdCounter++;
+        return tokenId;
     }
 }
 
