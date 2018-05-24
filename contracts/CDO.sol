@@ -1,7 +1,6 @@
 pragma solidity 0.4.18;
 
 // Internal dependencies
-import "./DebtRegistry.sol";
 import "./TermsContract.sol";
 
 // External dependencies
@@ -24,13 +23,12 @@ contract TrancheToken is ERC721Token {
 
     function create(address cdo)
         public
-        returns (uint256) // tokenId
+        returns (uint256 tokenId)
     {
-        uint256 tokenId = _tokenIdCounter;
+        tokenId = _tokenIdCounter;
         super._mint(msg.sender, tokenId);
         cdos[tokenId] = cdo;
         _tokenIdCounter++;
-        return tokenId;
     }
 }
 
@@ -235,6 +233,9 @@ contract CDO is ERC721Receiver {
     )
         public
         returns(bytes4)
+        // TODO: will this work? spec says i should return this special value,
+        // but i'm also updating storage, so doesn't that constitute a
+        // transaction and therefore imply that i'll be returning a tx hash?
     {
         require(!finalized);
         require(_from == admin);
@@ -264,6 +265,8 @@ contract CDO is ERC721Receiver {
         returns (
             uint256[6] _senior,
             uint256[4] _mezzanine)
+        // TODO: stop returning a value (since modifying storage implies
+        // returning a tx hash) and raise an event instead.
     {
         require(msg.sender == admin);
         require(underlyingDebts.length >= 3);
