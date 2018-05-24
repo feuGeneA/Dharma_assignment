@@ -186,10 +186,12 @@ contract("Collateralized Debt Obligation", async (ACCOUNTS) => {
         orderFactory = new DebtOrderFactory(defaultOrderParams);
 
         ABIDecoder.addABI(repaymentRouter.abi);
+        ABIDecoder.addABI(cdoFactory.abi);
     });
 
     after(() => {
         ABIDecoder.removeABI(repaymentRouter.abi);
+        ABIDecoder.removeABI(cdoFactory.abi);
     });
 
     describe("Example Tests", () => {
@@ -265,20 +267,69 @@ contract("Collateralized Debt Obligation", async (ACCOUNTS) => {
                 TX_DEFAULTS);
     });
 
-    // it("should pay senior in full and mezzanine in part when 70% of principal has been repaid", async () => {
-        /* from Expectations: As an illustrative example, if the total
-         * amount of principal + interest that is expected to flow into a
-         * CDO is $10, and only $7 has been repaid, each of the 6 Senior
-         * Tranche token holders will be entitled to receive $1 each,
-         * whereas each of the 4 Mezzanine Tranche token holders will be
-         * entitled to receive $0.25 each. */
-    // });
+    describe("with a fresh instance", async () => {
+        let cdo: CDOContract;
 
-    // it("should pay only senior tranche when only 30% of principal has been repaid", async () => {
-        /* from Expectations:  As an illustrative example, if the total
-         * amount of principal + interest that is expected to flow into a
-         * CDO is $10, and only ... $3 has been repaid, the Senior Tranche
-         * token holders will be entitled to $0.50 each, while the
-         * Mezzanine Tranche token holders will be entitled to nothing. */
-    // });
+        before(async () => {
+            const txHash =
+                await cdoFactory.create.sendTransactionAsync(
+                    termsContract.address,
+                    trancheToken.address,
+                    TX_DEFAULTS);
+
+            const txReceipt = await web3.eth.getTransactionReceipt(txHash);
+
+            for (const log of ABIDecoder.decodeLogs(txReceipt.logs)) {
+                if (log && log.name === "CDOCreated") {
+                    for (const event of log.events) {
+                        if (event.name === "cdo") {
+                            cdo = await CDOContract.at(
+                                String(event.value),
+                                web3,
+                                TX_DEFAULTS);
+                        }
+                    }
+                }
+            }
+        });
+
+        it("should not be finalized", async () => {
+            await expect(cdo.finalized.callAsync()).to.eventually.equal(false);
+        });
+
+        // should not allow finalization with fewer than three underlying debts
+        // should allow only CDO creator to collateralize
+        // should allow only CDO creator to finalize
+        // should only allow finalization if collateralized with 3 or more debts
+        // should not allow further collateralization after finalization
+        // should disallow withdrawl when tranche is not entitled to anything
+        // should allow withdrawl only by tranche token owner
+
+        // it("should pay senior in full and mezzanine in part when 70% of principal has been repaid", async () => {
+            /* from Expectations: As an illustrative example, if the total
+             * amount of principal + interest that is expected to flow into a
+             * CDO is $10, and only $7 has been repaid, each of the 6 Senior
+             * Tranche token holders will be entitled to receive $1 each,
+             * whereas each of the 4 Mezzanine Tranche token holders will be
+             * entitled to receive $0.25 each. */
+
+            /**
+             * - have debtors repay 70% of the debt
+             * - withdraw $1 from each senior tranche holder
+             * - withdraw $0.25 from each senior tranche holder
+             */
+        // });
+
+        // it("should pay only senior tranche when only 30% of principal has been repaid", async () => {
+            /* from Expectations:  As an illustrative example, if the total
+             * amount of principal + interest that is expected to flow into a
+             * CDO is $10, and only ... $3 has been repaid, the Senior Tranche
+             * token holders will be entitled to $0.50 each, while the
+             * Mezzanine Tranche token holders will be entitled to nothing. */
+        // });
+    });
+
+    /* to transfer ownership of a DebtToken, consider using
+     * debtToken.transfer like in test/ts/unit/("user transfers token he
+     * owns").  */
 });
