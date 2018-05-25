@@ -387,7 +387,7 @@ contract("Collateralized Debt Obligation", async (ACCOUNTS) => {
                         // test/ts/cdo.ts(450,52): error TS7017: Element
                         //     implicitly has an 'any' type because type
                         //     'string | boolean' has no index signature.
-                        // not sure what to do about it
+                        // not sure what to do about it.
                         seniorTrancheTokenIds.push(event.value[0]);
                         seniorTrancheTokenIds.push(event.value[1]);
                         seniorTrancheTokenIds.push(event.value[2]);
@@ -401,7 +401,7 @@ contract("Collateralized Debt Obligation", async (ACCOUNTS) => {
                         // test/ts/cdo.ts(450,52): error TS7017: Element
                         //     implicitly has an 'any' type because type
                         //     'string | boolean' has no index signature.
-                        // not sure what to do about it
+                        // not sure what to do about it.
                         mezzanineTrancheTokenIds.push(event.value[0]);
                         mezzanineTrancheTokenIds.push(event.value[1]);
                         mezzanineTrancheTokenIds.push(event.value[2]);
@@ -448,6 +448,7 @@ contract("Collateralized Debt Obligation", async (ACCOUNTS) => {
             principalToken.address, // token type
             { from: DEBTOR_2 },
         );
+
         await expect(
             principalToken.balanceOf.callAsync(cdo.address),
         ).to.eventually.bignumber.equal(cdoBalanceBefore.plus(Units.ether(1)));
