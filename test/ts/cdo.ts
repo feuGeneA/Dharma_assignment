@@ -492,7 +492,18 @@ contract("Collateralized Debt Obligation", async (ACCOUNTS) => {
         }
     });
 
-    // should disallow withdrawl when tranche is not entitled to anything
+    it("should disallow withdrawl when tranche is not entitled to anything", async () => {
+        try {
+            await cdo.withdraw.sendTransactionAsync(
+                seniorTrancheTokenIds[0],
+                CONTRACT_OWNER,
+                TX_DEFAULTS);
+            expect.fail(0, 0, "CDO.withdraw should have failed a require()");
+        } catch (e) {
+            // do nothing
+        }
+    });
+
     // should allow withdrawl only by tranche token owner
 
     // it("should pay senior in full and mezzanine in part when 70% of principal has been repaid", async () => {
