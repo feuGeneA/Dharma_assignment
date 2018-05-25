@@ -258,6 +258,7 @@ contract("Collateralized Debt Obligation", async (ACCOUNTS) => {
             await cdoFactory.create.sendTransactionAsync(
                 termsContract.address,
                 trancheToken.address,
+                principalToken.address,
                 TX_DEFAULTS);
 
         const txReceipt = await web3.eth.getTransactionReceipt(txHash);
@@ -452,6 +453,22 @@ contract("Collateralized Debt Obligation", async (ACCOUNTS) => {
         await expect(
             principalToken.balanceOf.callAsync(cdo.address),
         ).to.eventually.bignumber.equal(cdoBalanceBefore.plus(Units.ether(1)));
+    });
+
+    it("should make repayments immediately available for withdrawl", async () => {
+        const seniorBalanceBefore =
+            await principalToken.balanceOf.callAsync(CONTRACT_OWNER);
+
+        await cdo.withdraw.sendTransactionAsync(seniorTrancheTokenIds[0], CONTRACT_OWNER, TX_DEFAULTS);
+
+        const seniorBalanceAfter =
+            await principalToken.balanceOf.callAsync(CONTRACT_OWNER);
+
+        expect(
+            seniorBalanceAfter
+                .minus(seniorBalanceBefore)
+                .minus(Units.ether(1).dividedBy(6)),
+        ).to.bignumber.lessThan(1);
     });
 
     // should allow withdrawl only by tranche token owner

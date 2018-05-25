@@ -2,6 +2,7 @@ pragma solidity 0.4.18;
 
 // Internal dependencies
 import "./TermsContract.sol";
+import "./test/dummy_tokens/DummyToken.sol";
 
 // External dependencies
 import "zeppelin-solidity/contracts/token/ERC721/ERC721BasicToken.sol";
@@ -44,7 +45,11 @@ contract CDOFactory {
 
     event CDOCreated(address owner, address cdo);
 
-    function create(address termsContract, address trancheToken)
+    function create(
+        address termsContract,
+        address trancheToken,
+        address principalToken
+    )
         public
     {
         CDOCreated(
@@ -52,7 +57,8 @@ contract CDOFactory {
             new CDO(
                 msg.sender,
                 TermsContract(termsContract),
-                TrancheToken(trancheToken)));
+                TrancheToken(trancheToken),
+                DummyToken(principalToken)));
     }
 }
 
@@ -98,10 +104,13 @@ contract CDO is ERC721Receiver {
 
     TermsContract internal termsContract;
 
+    DummyToken internal principalToken;
+
     function CDO(
         address _admin,
         TermsContract _termsContract, /// common to all underlying debts
-        TrancheToken _trancheToken
+        TrancheToken _trancheToken,
+        DummyToken _principalToken
     )
         public
     {
@@ -110,6 +119,8 @@ contract CDO is ERC721Receiver {
         termsContract = _termsContract;
 
         trancheToken = _trancheToken;
+
+        principalToken = _principalToken;
 
         for (uint i=0; i < seniors.length; i++) {
             seniors[i] = trancheToken.create(this, admin);
@@ -140,7 +151,7 @@ contract CDO is ERC721Receiver {
         view
         returns (uint)
     {
-        totalExpectedSeniorPayout() - withdrawn - seniorEntitlements();
+        return totalExpectedSeniorPayout() - withdrawn - seniorEntitlements();
     }
 
     function seniorEntitlements()
@@ -167,7 +178,7 @@ contract CDO is ERC721Receiver {
         return _mezzanineEntitlements;
     }
 
-    function totalEntitlements()
+    function allocatedEntitlements()
         public
         view
         returns (uint)
@@ -183,31 +194,36 @@ contract CDO is ERC721Receiver {
         // first update `entitlements` with any repayments that have come in
         // since the last call to this function.
 
-        uint unallocatedEntitlements = this.balance - totalEntitlements();
+        uint unallocatedEntitlements =
+            principalToken.balanceOf(this) - allocatedEntitlements();
 
         if (unallocatedEntitlements > 0) {
 
-            if (remainingExpectedSeniorPayout() > 0) {
+            if (remainingExpectedSeniorPayout() > seniors.length) {
                 uint unallocatedSeniorEntitlements =
                     (remainingExpectedSeniorPayout() < unallocatedEntitlements)
                     ? remainingExpectedSeniorPayout() : unallocatedEntitlements;
 
                 for (uint i=0; i < seniors.length; i++) {
-                    // TODO: determine if division truncation is an issue here
                     entitlements[seniors[i]] +=
                         unallocatedSeniorEntitlements/seniors.length;
+                    unallocatedEntitlements -= entitlements[seniors[i]];
                 }
-
-                unallocatedEntitlements -= unallocatedSeniorEntitlements;
             }
 
-            if (unallocatedEntitlements > 0) {
+            if (unallocatedEntitlements > mezzanine.length) {
                 for (uint j=0; j < mezzanine.length; j++) {
-                    // TODO: determine if division truncation is an issue here
                     entitlements[mezzanine[i]] +=
                         unallocatedEntitlements/mezzanine.length;
+                    unallocatedEntitlements -= entitlements[mezzanine[i]];
                 }
             }
+
+            // potential problem: there could be tiny bits of repayment left in
+            // here, left over from division truncation, and there's currently
+            // no way for the contract owner to retrieve it or do anything with
+            // it, so it seems those tiny bits are stuck in this contract
+            // forever.
         }
 
         // done updating `entitlements`
@@ -220,7 +236,7 @@ contract CDO is ERC721Receiver {
 
         withdrawn += entitlement;
 
-        _to.transfer(entitlement);
+        principalToken.transfer(_to, entitlement);
     }
 
     /**
@@ -233,9 +249,6 @@ contract CDO is ERC721Receiver {
     )
         public
         returns(bytes4)
-        // TODO: will this work? spec says i should return this special value,
-        // but i'm also updating storage, so doesn't that constitute a
-        // transaction and therefore imply that i'll be returning a tx hash?
     {
         require(!finalized);
         require(_from == admin);
