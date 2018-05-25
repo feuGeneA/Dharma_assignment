@@ -93,12 +93,14 @@ contract("Collateralized Debt Obligation", async (ACCOUNTS) => {
     const DEBTOR_1 = ACCOUNTS[1];
     const DEBTOR_2 = ACCOUNTS[2];
     const DEBTOR_3 = ACCOUNTS[3];
-    const DEBTORS = [DEBTOR_1, DEBTOR_2, DEBTOR_3];
+    const DEBTOR_4 = ACCOUNTS[4];
+    const DEBTORS = [DEBTOR_1, DEBTOR_2, DEBTOR_3, DEBTOR_4];
 
-    const CREDITOR_1 = ACCOUNTS[4];
-    const CREDITOR_2 = ACCOUNTS[5];
-    const CREDITOR_3 = ACCOUNTS[6];
-    const CREDITORS = [CREDITOR_1, CREDITOR_2, CREDITOR_3];
+    const CREDITOR_1 = ACCOUNTS[5];
+    const CREDITOR_2 = ACCOUNTS[6];
+    const CREDITOR_3 = ACCOUNTS[7];
+    const CREDITOR_4 = ACCOUNTS[8];
+    const CREDITORS = [CREDITOR_1, CREDITOR_2, CREDITOR_3, CREDITOR_4];
 
     const PAYER = ACCOUNTS[7];
 
@@ -128,6 +130,7 @@ contract("Collateralized Debt Obligation", async (ACCOUNTS) => {
         await principalToken.setBalance.sendTransactionAsync(CREDITOR_1, Units.ether(100));
         await principalToken.setBalance.sendTransactionAsync(CREDITOR_2, Units.ether(100));
         await principalToken.setBalance.sendTransactionAsync(CREDITOR_3, Units.ether(100));
+        await principalToken.setBalance.sendTransactionAsync(CREDITOR_4, Units.ether(100));
 
         await principalToken.approve.sendTransactionAsync(
             tokenTransferProxy.address,
@@ -144,6 +147,11 @@ contract("Collateralized Debt Obligation", async (ACCOUNTS) => {
             Units.ether(100),
             { from: DEBTOR_3 },
         );
+        await principalToken.approve.sendTransactionAsync(
+            tokenTransferProxy.address,
+            Units.ether(100),
+            { from: DEBTOR_4 },
+        );
 
         await principalToken.approve.sendTransactionAsync(
             tokenTransferProxy.address,
@@ -159,6 +167,11 @@ contract("Collateralized Debt Obligation", async (ACCOUNTS) => {
             tokenTransferProxy.address,
             Units.ether(100),
             { from: CREDITOR_3 },
+        );
+        await principalToken.approve.sendTransactionAsync(
+            tokenTransferProxy.address,
+            Units.ether(100),
+            { from: CREDITOR_4 },
         );
 
         const termsContractParameters = SimpleInterestParameters.pack({
@@ -199,7 +212,8 @@ contract("Collateralized Debt Obligation", async (ACCOUNTS) => {
         const signatories = [
             { creditor: CREDITOR_1, debtor: DEBTOR_1 },
             { creditor: CREDITOR_2, debtor: DEBTOR_2 },
-            { creditor: CREDITOR_3, debtor: DEBTOR_3 } ];
+            { creditor: CREDITOR_3, debtor: DEBTOR_3 },
+            { creditor: CREDITOR_4, debtor: DEBTOR_4 } ];
 
         for (let i = 0; i < signatories.length; i++) {
             const signedDebtOrder = await orderFactory.generateDebtOrder({
@@ -403,8 +417,10 @@ contract("Collateralized Debt Obligation", async (ACCOUNTS) => {
     });
 
     it("should allow only CDO creator to finalize", async () => {
-        // send the remaining debts
-        for (let i = Math.min(agreementIds.length, 2); i < agreementIds.length; i++) {
+        // send the remaining debts, except for the last one, which is being
+        // held back for the subsequent test of collateralization after
+        // finalization.
+        for (let i = Math.min(agreementIds.length - 1, 2); i < agreementIds.length - 1; i++) {
             await debtToken.transfer.sendTransactionAsync(
                 cdo.address, // to
                 new BigNumber(agreementIds[i]), // tokenId
@@ -462,7 +478,20 @@ contract("Collateralized Debt Obligation", async (ACCOUNTS) => {
         ABIDecoder.removeABI(cdo.abi);
     });
 
-    // should not allow further collateralization after finalization
+    it("should not allow further collateralization after finalization", async () => {
+        // use the final debt token, which wasn't sent to the CDO in any
+        // previous tests.
+        try {
+            await debtToken.transfer.sendTransactionAsync(
+                cdo.address, // to
+                new BigNumber(agreementIds[agreementIds.length - 1]), // tokenId
+                { from: CONTRACT_OWNER });
+            expect.fail(0, 0, "CDO.onERC721Received should have failed a require()");
+        } catch (e) {
+            // do nothing
+        }
+    });
+
     // should disallow withdrawl when tranche is not entitled to anything
     // should allow withdrawl only by tranche token owner
 
