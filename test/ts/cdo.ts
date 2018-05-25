@@ -504,6 +504,20 @@ contract("Collateralized Debt Obligation", async (ACCOUNTS) => {
         }
     });
 
+    it("should accept repayments", async () => {
+        const cdoBalanceBefore = await principalToken.balanceOf.callAsync(cdo.address);
+
+        await repaymentRouter.repay.sendTransactionAsync(
+            agreementIds[1],
+            Units.ether(1), // amount
+            principalToken.address, // token type
+            { from: DEBTOR_2 },
+        );
+        await expect(
+            principalToken.balanceOf.callAsync(cdo.address),
+        ).to.eventually.bignumber.equal(cdoBalanceBefore.plus(Units.ether(1)));
+    });
+
     // should allow withdrawl only by tranche token owner
 
     // it("should pay senior in full and mezzanine in part when 70% of principal has been repaid", async () => {
