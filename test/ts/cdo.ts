@@ -79,6 +79,8 @@ contract("Collateralized Debt Obligation", async (ACCOUNTS) => {
 
     let cdo: CDOContract;
 
+    const agreementIds: string[] = new Array();
+
     const CONTRACT_OWNER = ACCOUNTS[0];
 
     const DEBTOR_1 = ACCOUNTS[1];
@@ -186,6 +188,40 @@ contract("Collateralized Debt Obligation", async (ACCOUNTS) => {
         };
 
         orderFactory = new DebtOrderFactory(defaultOrderParams);
+
+        const signatories = [
+            { creditor: CREDITOR_1, debtor: DEBTOR_1 },
+            { creditor: CREDITOR_2, debtor: DEBTOR_2 },
+            { creditor: CREDITOR_3, debtor: DEBTOR_3 } ];
+
+        for (let i = 0; i < signatories.length; i++) {
+            const signedDebtOrder = await orderFactory.generateDebtOrder({
+                creditor: signatories[i].creditor,
+                debtor: signatories[i].debtor,
+                orderSignatories: {
+                    debtor: signatories[i].debtor,
+                    creditor: signatories[i].creditor },
+            });
+
+            agreementIds.push(
+                signedDebtOrder.getIssuanceCommitment().getHash());
+
+            const txHash = await kernel.fillDebtOrder.sendTransactionAsync(
+                signedDebtOrder.getCreditor(),
+                signedDebtOrder.getOrderAddresses(),
+                signedDebtOrder.getOrderValues(),
+                signedDebtOrder.getOrderBytes32(),
+                signedDebtOrder.getSignaturesV(),
+                signedDebtOrder.getSignaturesR(),
+                signedDebtOrder.getSignaturesS(),
+            );
+
+            // transfer debt to loan aggregator
+            await debtToken.transfer.sendTransactionAsync(
+                CONTRACT_OWNER, // to
+                new BigNumber(agreementIds[i]), // tokenId
+                { from: signatories[i].creditor });
+        }
 
         ABIDecoder.addABI(repaymentRouter.abi);
         ABIDecoder.addABI(cdoFactory.abi);
@@ -297,10 +333,88 @@ contract("Collateralized Debt Obligation", async (ACCOUNTS) => {
         }
     });
 
-    // should not allow finalization with fewer than three underlying debts
-    // should allow only CDO creator to collateralize
-    // should allow only CDO creator to finalize
-    // should only allow finalization if collateralized with 3 or more debts
+    it("should disallow collateralization by anyone other than the CDO creator", async () => {
+        await expect(
+            debtToken.ownerOf.callAsync(new BigNumber(agreementIds[0])),
+        ).to.eventually.equal(CONTRACT_OWNER);
+
+        // debt needs to be held by someone else for this test
+        await debtToken.transfer.sendTransactionAsync(
+            CREDITOR_1, // to
+            new BigNumber(agreementIds[0]), // tokenId
+            { from: CONTRACT_OWNER });
+
+        // now have creditor try to collateralize
+        try {
+            await debtToken.transfer.sendTransactionAsync(
+                cdo.address, // to
+                new BigNumber(agreementIds[0]), // tokenId
+                { from: CREDITOR_1 });
+
+            expect.fail(0, 0, "CDO.onERC721Received should have failed a require()");
+        } catch (e) {
+            // put debt back to CONTRACT_OWNER for subsequent tests
+            await debtToken.transfer.sendTransactionAsync(
+                CONTRACT_OWNER, // to
+                new BigNumber(agreementIds[0]), // tokenId
+                { from: CREDITOR_1 });
+        }
+    });
+
+    it("should allow collateralization", async () => {
+        // only send the first two debt tokens, so that subsequent tests can
+        // verify behavior around incomplete collateralization.
+        for (let i = 0; i < Math.min(agreementIds.length, 2); i++) {
+            const nAgreementId = new BigNumber(agreementIds[i]);
+
+            await debtToken.transfer.sendTransactionAsync(
+                cdo.address, // to
+                nAgreementId, // tokenId
+                { from: CONTRACT_OWNER });
+
+            await expect(
+                debtToken.ownerOf.callAsync(nAgreementId),
+            ).to.eventually.equal(cdo.address);
+
+            const collateralTokenId: BigNumber
+                = await cdo.underlyingDebts.callAsync(new BigNumber(i));
+
+            expect(collateralTokenId.equals(nAgreementId)).to.be.true;
+
+            // TODO: confirm that cdo.expectedRepayment accumulates appropriately
+        }
+    });
+
+    it("should not allow finalization with fewer than three underlying debts", async () => {
+        // previous test only sent two debts as collateral
+        try {
+            await cdo.finalize.sendTransactionAsync(TX_DEFAULTS);
+            expect.fail(0, 0, "CDO.finalize() should have failed a require()");
+        } catch (e) {
+            await expect(cdo.finalized.callAsync()).to.eventually.equal(false);
+        }
+    });
+
+    it("should allow only CDO creator to finalize", async () => {
+        // send the remaining debts, except for the last one, which will be
+        // held back for subsequent tests to use after CDO.finalize() has been
+        // called.
+        for (let i = Math.min(agreementIds.length - 1, 2); i < agreementIds.length - 1; i++) {
+            await debtToken.transfer.sendTransactionAsync(
+                cdo.address, // to
+                new BigNumber(agreementIds[i]), // tokenId
+                { from: CONTRACT_OWNER });
+        }
+
+        try {
+            await cdo.finalize.sendTransactionAsync(
+                { from: DEBTOR_1, gas: TX_DEFAULTS.gas });
+            expect.fail(0, 0, "CDO.finalize() should have failed a require()");
+        } catch (e) {
+            await expect(cdo.finalized.callAsync()).to.eventually.equal(false);
+        }
+    });
+
     // should not allow further collateralization after finalization
     // should disallow withdrawl when tranche is not entitled to anything
     // should allow withdrawl only by tranche token owner
