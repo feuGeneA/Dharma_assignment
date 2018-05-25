@@ -21,12 +21,12 @@ contract TrancheToken is ERC721Token {
     {
     }
 
-    function create(address cdo)
+    function create(address cdo, address admin)
         public
         returns (uint256 tokenId)
     {
         tokenId = _tokenIdCounter;
-        super._mint(msg.sender, tokenId);
+        super._mint(admin, tokenId);
         cdos[tokenId] = cdo;
         _tokenIdCounter++;
     }
@@ -112,12 +112,12 @@ contract CDO is ERC721Receiver {
         trancheToken = _trancheToken;
 
         for (uint i=0; i < seniors.length; i++) {
-            seniors[i] = trancheToken.create(this);
+            seniors[i] = trancheToken.create(this, admin);
             entitlements[seniors[i]] = 0;
         }
 
         for (uint j=0; j < mezzanine.length; j++) {
-            mezzanine[j] = trancheToken.create(this);
+            mezzanine[j] = trancheToken.create(this, admin);
             entitlements[mezzanine[j]] = 0;
         }
     }
@@ -253,6 +253,10 @@ contract CDO is ERC721Receiver {
         return ERC721Receiver.ERC721_RECEIVED;
     }
 
+    event CDOFinalized(
+        uint256[6] seniorTrancheTokenIds,
+        uint256[4] mezzanineTrancheTokenIds);
+
     /**
      * @author F. Eugene Aumson (feuGeneA@github)
      * @notice Precondition: transfer to this contract the `DebtToken`s which
@@ -262,16 +266,10 @@ contract CDO is ERC721Receiver {
      */
     function finalize()
         public
-        returns (
-            uint256[6] _senior,
-            uint256[4] _mezzanine)
-        // TODO: stop returning a value (since modifying storage implies
-        // returning a tx hash) and raise an event instead.
     {
         require(msg.sender == admin);
         require(underlyingDebts.length >= 3);
-        // TODO: consider anything else that might need to be done here.
         finalized = true;
-        return (seniors, mezzanine);
+        CDOFinalized(seniors, mezzanine);
     }
 }

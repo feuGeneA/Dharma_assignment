@@ -56,10 +56,14 @@ contract("Tranche token", (ACCOUNTS) => {
     });
 
     it("should cleanly create()", async () => {
-        const tokenId1 = await trancheTokenContract.create.sendTransactionAsync(CONTRACT_OWNER, TX_DEFAULTS);
+        const tokenId1 =
+            await trancheTokenContract.create.sendTransactionAsync(
+                CONTRACT_OWNER, CONTRACT_OWNER, TX_DEFAULTS);
         expect(tokenId1).to.be.a("string");
 
-        const tokenId2 = await trancheTokenContract.create.sendTransactionAsync(CONTRACT_OWNER, TX_DEFAULTS);
+        const tokenId2 =
+            await trancheTokenContract.create.sendTransactionAsync(
+                CONTRACT_OWNER, CONTRACT_OWNER, TX_DEFAULTS);
         expect(tokenId2).to.be.a("string");
         expect(tokenId2).to.not.equal(tokenId1);
     });
@@ -80,6 +84,9 @@ contract("Collateralized Debt Obligation", async (ACCOUNTS) => {
     let cdo: CDOContract;
 
     const agreementIds: string[] = new Array();
+
+    const seniorTrancheTokenIds: BigNumber[] = new Array();
+    const mezzanineTrancheTokenIds: BigNumber[] = new Array();
 
     const CONTRACT_OWNER = ACCOUNTS[0];
 
@@ -396,10 +403,8 @@ contract("Collateralized Debt Obligation", async (ACCOUNTS) => {
     });
 
     it("should allow only CDO creator to finalize", async () => {
-        // send the remaining debts, except for the last one, which will be
-        // held back for subsequent tests to use after CDO.finalize() has been
-        // called.
-        for (let i = Math.min(agreementIds.length - 1, 2); i < agreementIds.length - 1; i++) {
+        // send the remaining debts
+        for (let i = Math.min(agreementIds.length, 2); i < agreementIds.length; i++) {
             await debtToken.transfer.sendTransactionAsync(
                 cdo.address, // to
                 new BigNumber(agreementIds[i]), // tokenId
@@ -413,6 +418,48 @@ contract("Collateralized Debt Obligation", async (ACCOUNTS) => {
         } catch (e) {
             await expect(cdo.finalized.callAsync()).to.eventually.equal(false);
         }
+    });
+
+    it("should finalize cleanly", async () => {
+        const txHash = await cdo.finalize.sendTransactionAsync(TX_DEFAULTS);
+        await expect(cdo.finalized.callAsync()).to.eventually.equal(true);
+
+        const txReceipt = await web3.eth.getTransactionReceipt(txHash);
+
+        ABIDecoder.addABI(cdo.abi);
+        for (const log of ABIDecoder.decodeLogs(txReceipt.logs)) {
+            if (log && log.name === "CDOFinalized") {
+                for (const event of log.events) {
+                    if (event.name === "seniorTrancheTokenIds") {
+                        // weird but i can't seem to iterate over these.
+                        // also, typescript compiler complains:
+                        // test/ts/cdo.ts(450,52): error TS7017: Element
+                        //     implicitly has an 'any' type because type
+                        //     'string | boolean' has no index signature.
+                        // not sure what to do about it
+                        seniorTrancheTokenIds.push(event.value[0]);
+                        seniorTrancheTokenIds.push(event.value[1]);
+                        seniorTrancheTokenIds.push(event.value[2]);
+                        seniorTrancheTokenIds.push(event.value[3]);
+                        seniorTrancheTokenIds.push(event.value[4]);
+                        seniorTrancheTokenIds.push(event.value[5]);
+                    }
+                    if (event.name === "mezzanineTrancheTokenIds") {
+                        // weird but i can't seem to iterate over these.
+                        // also, typescript compiler complains:
+                        // test/ts/cdo.ts(450,52): error TS7017: Element
+                        //     implicitly has an 'any' type because type
+                        //     'string | boolean' has no index signature.
+                        // not sure what to do about it
+                        mezzanineTrancheTokenIds.push(event.value[0]);
+                        mezzanineTrancheTokenIds.push(event.value[1]);
+                        mezzanineTrancheTokenIds.push(event.value[2]);
+                        mezzanineTrancheTokenIds.push(event.value[3]);
+                    }
+                }
+            }
+        }
+        ABIDecoder.removeABI(cdo.abi);
     });
 
     // should not allow further collateralization after finalization
