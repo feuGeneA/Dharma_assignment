@@ -90,19 +90,19 @@ contract("Collateralized Debt Obligation", async (ACCOUNTS) => {
 
     const CONTRACT_OWNER = ACCOUNTS[0];
 
-    const DEBTOR_1 = ACCOUNTS[1];
-    const DEBTOR_2 = ACCOUNTS[2];
-    const DEBTOR_3 = ACCOUNTS[3];
-    const DEBTOR_4 = ACCOUNTS[4];
-    const DEBTORS = [DEBTOR_1, DEBTOR_2, DEBTOR_3, DEBTOR_4];
+    const DEBTORS = [
+        ACCOUNTS[1],
+        ACCOUNTS[2],
+        ACCOUNTS[3],
+        ACCOUNTS[4]];
 
-    const CREDITOR_1 = ACCOUNTS[5];
-    const CREDITOR_2 = ACCOUNTS[6];
-    const CREDITOR_3 = ACCOUNTS[7];
-    const CREDITOR_4 = ACCOUNTS[8];
-    const CREDITORS = [CREDITOR_1, CREDITOR_2, CREDITOR_3, CREDITOR_4];
+    const CREDITORS = [
+        ACCOUNTS[5],
+        ACCOUNTS[6],
+        ACCOUNTS[7],
+        ACCOUNTS[8]];
 
-    const PAYER = ACCOUNTS[7];
+    const PAYER = ACCOUNTS[9];
 
     const NULL_ADDRESS = "0x0000000000000000000000000000000000000000";
 
@@ -127,52 +127,26 @@ contract("Collateralized Debt Obligation", async (ACCOUNTS) => {
         cdoFactory = await CDOFactoryContract.deployed(web3, TX_DEFAULTS);
         trancheToken = await TrancheTokenContract.deployed(web3, TX_DEFAULTS);
 
-        await principalToken.setBalance.sendTransactionAsync(CREDITOR_1, Units.ether(100));
-        await principalToken.setBalance.sendTransactionAsync(CREDITOR_2, Units.ether(100));
-        await principalToken.setBalance.sendTransactionAsync(CREDITOR_3, Units.ether(100));
-        await principalToken.setBalance.sendTransactionAsync(CREDITOR_4, Units.ether(100));
+        for (const CREDITOR of CREDITORS) {
+            await principalToken.setBalance.sendTransactionAsync(
+                CREDITOR, Units.ether(100));
+        }
 
-        await principalToken.approve.sendTransactionAsync(
-            tokenTransferProxy.address,
-            Units.ether(100),
-            { from: DEBTOR_1 },
-        );
-        await principalToken.approve.sendTransactionAsync(
-            tokenTransferProxy.address,
-            Units.ether(100),
-            { from: DEBTOR_2 },
-        );
-        await principalToken.approve.sendTransactionAsync(
-            tokenTransferProxy.address,
-            Units.ether(100),
-            { from: DEBTOR_3 },
-        );
-        await principalToken.approve.sendTransactionAsync(
-            tokenTransferProxy.address,
-            Units.ether(100),
-            { from: DEBTOR_4 },
-        );
+        for (const DEBTOR of DEBTORS) {
+            await principalToken.approve.sendTransactionAsync(
+                tokenTransferProxy.address,
+                Units.ether(100),
+                { from: DEBTOR },
+            );
+        }
 
-        await principalToken.approve.sendTransactionAsync(
-            tokenTransferProxy.address,
-            Units.ether(100),
-            { from: CREDITOR_1 },
-        );
-        await principalToken.approve.sendTransactionAsync(
-            tokenTransferProxy.address,
-            Units.ether(100),
-            { from: CREDITOR_2 },
-        );
-        await principalToken.approve.sendTransactionAsync(
-            tokenTransferProxy.address,
-            Units.ether(100),
-            { from: CREDITOR_3 },
-        );
-        await principalToken.approve.sendTransactionAsync(
-            tokenTransferProxy.address,
-            Units.ether(100),
-            { from: CREDITOR_4 },
-        );
+        for (const CREDITOR of CREDITORS) {
+            await principalToken.approve.sendTransactionAsync(
+                tokenTransferProxy.address,
+                Units.ether(100),
+                { from: CREDITOR },
+            );
+        }
 
         const termsContractParameters = SimpleInterestParameters.pack({
             principalTokenIndex: dummyREPTokenIndex, // Our migrations set REP up to be at index 0 of the registry
@@ -187,7 +161,7 @@ contract("Collateralized Debt Obligation", async (ACCOUNTS) => {
             debtKernelContract: kernel.address,
             debtOrderVersion: kernel.address,
             debtTokenContract: debtToken.address,
-            debtor: DEBTOR_1,
+            debtor: DEBTORS[0],
             debtorFee: Units.ether(0),
             expirationTimestampInSec: new BigNumber(
                 moment()
@@ -195,7 +169,7 @@ contract("Collateralized Debt Obligation", async (ACCOUNTS) => {
                     .unix(),
             ),
             issuanceVersion: repaymentRouter.address,
-            orderSignatories: { debtor: DEBTOR_1, creditor: CREDITOR_1 },
+            orderSignatories: { debtor: DEBTORS[0], creditor: CREDITORS[0] },
             principalAmount: Units.ether(1),
             principalTokenAddress: principalToken.address,
             relayer: NULL_ADDRESS,
@@ -209,19 +183,13 @@ contract("Collateralized Debt Obligation", async (ACCOUNTS) => {
 
         orderFactory = new DebtOrderFactory(defaultOrderParams);
 
-        const signatories = [
-            { creditor: CREDITOR_1, debtor: DEBTOR_1 },
-            { creditor: CREDITOR_2, debtor: DEBTOR_2 },
-            { creditor: CREDITOR_3, debtor: DEBTOR_3 },
-            { creditor: CREDITOR_4, debtor: DEBTOR_4 } ];
-
-        for (let i = 0; i < signatories.length; i++) {
+        for (let i = 0; i < DEBTORS.length; i++) {
             const signedDebtOrder = await orderFactory.generateDebtOrder({
-                creditor: signatories[i].creditor,
-                debtor: signatories[i].debtor,
+                creditor: CREDITORS[i],
+                debtor: DEBTORS[i],
                 orderSignatories: {
-                    debtor: signatories[i].debtor,
-                    creditor: signatories[i].creditor },
+                    debtor: DEBTORS[i],
+                    creditor: CREDITORS[i] },
             });
 
             agreementIds.push(
@@ -241,7 +209,7 @@ contract("Collateralized Debt Obligation", async (ACCOUNTS) => {
             await debtToken.transfer.sendTransactionAsync(
                 CONTRACT_OWNER, // to
                 new BigNumber(agreementIds[i]), // tokenId
-                { from: signatories[i].creditor });
+                { from: CREDITORS[i]});
         }
 
         ABIDecoder.addABI(repaymentRouter.abi);
@@ -297,7 +265,7 @@ contract("Collateralized Debt Obligation", async (ACCOUNTS) => {
 
         // debt needs to be held by someone else for this test
         await debtToken.transfer.sendTransactionAsync(
-            CREDITOR_1, // to
+            CREDITORS[0], // to
             new BigNumber(agreementIds[0]), // tokenId
             { from: CONTRACT_OWNER });
 
@@ -306,7 +274,7 @@ contract("Collateralized Debt Obligation", async (ACCOUNTS) => {
             await debtToken.transfer.sendTransactionAsync(
                 cdo.address, // to
                 new BigNumber(agreementIds[0]), // tokenId
-                { from: CREDITOR_1 });
+                { from: CREDITORS[0] });
 
             expect.fail(0, 0, "CDO.onERC721Received should have failed a require()");
         } catch (e) {
@@ -314,7 +282,7 @@ contract("Collateralized Debt Obligation", async (ACCOUNTS) => {
             await debtToken.transfer.sendTransactionAsync(
                 CONTRACT_OWNER, // to
                 new BigNumber(agreementIds[0]), // tokenId
-                { from: CREDITOR_1 });
+                { from: CREDITORS[0] });
         }
     });
 
@@ -365,7 +333,7 @@ contract("Collateralized Debt Obligation", async (ACCOUNTS) => {
 
         try {
             await cdo.finalize.sendTransactionAsync(
-                { from: DEBTOR_1, gas: TX_DEFAULTS.gas });
+                { from: DEBTORS[0], gas: TX_DEFAULTS.gas });
             expect.fail(0, 0, "CDO.finalize() should have failed a require()");
         } catch (e) {
             await expect(cdo.finalized.callAsync()).to.eventually.equal(false);
@@ -447,7 +415,7 @@ contract("Collateralized Debt Obligation", async (ACCOUNTS) => {
             agreementIds[1],
             Units.ether(1), // amount
             principalToken.address, // token type
-            { from: DEBTOR_2 },
+            { from: DEBTORS[1] },
         );
 
         await expect(
