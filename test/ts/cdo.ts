@@ -520,6 +520,21 @@ contract("Collateralized Debt Obligation", async (ACCOUNTS) => {
         const mezzanineBalanceAfter =
             await principalToken.balanceOf.callAsync(CONTRACT_OWNER);
 
-        expect(mezzanineBalanceAfter.greaterThan(mezzanineBalanceBefore));
+        const totalExpectedRepayment =
+            await cdo.expectedRepayment.callAsync();
+
+        const expectedWithdrawl =
+            totalExpectedRepayment
+                .times(7).dividedBy(10) // 70% repaid to this point
+                .minus(
+                    totalExpectedRepayment
+                        .times(6).dividedBy(10)) // 60% goes to seniors
+                .dividedBy(4); // there are 4 mezzanine tranche holders
+
+        expect(
+            mezzanineBalanceAfter
+                .minus(mezzanineBalanceBefore)
+                .minus(expectedWithdrawl),
+        ).to.be.bignumber.equal(0);
     });
 });
