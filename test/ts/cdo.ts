@@ -482,16 +482,9 @@ contract("Collateralized Debt Obligation", async (ACCOUNTS) => {
         }
     });
 
-    it("should allow mezzanine withdrawls when 70% of repayments have been made", async () => {
-        /* from Expectations: As an illustrative example, if the total
-         * amount of principal + interest that is expected to flow into a
-         * CDO is $10, and only $7 has been repaid, each of the 6 Senior
-         * Tranche token holders will be entitled to receive $1 each,
-         * whereas each of the 4 Mezzanine Tranche token holders will be
-         * entitled to receive $0.25 each. */
-
+    it("should deny mezzanine withdrawals when exactly 60% of repayments have occurred", async () => {
         // previous tests have caused precisely 30% of repayments to be made.
-        // have debtors make 40% more of their expected repayments
+        // repay another 30%
         for (let i = 0; i < agreementIds.length - 1; i++) {
             const termEndTimestamp =
                 await termsContract.getTermEndTimestamp.callAsync(
@@ -501,7 +494,45 @@ contract("Collateralized Debt Obligation", async (ACCOUNTS) => {
                 await termsContract.getExpectedRepaymentValue.callAsync(
                     agreementIds[i], termEndTimestamp);
 
-            const repaymentAmount = repaymentValue.times(4).dividedBy(10); // 40%
+            const repaymentAmount = repaymentValue.times(3).dividedBy(10); // 30%
+
+            await repaymentRouter.repay.sendTransactionAsync(
+                agreementIds[i],
+                repaymentAmount, // amount
+                principalToken.address, // token type
+                { from: DEBTORS[i] },
+            );
+        }
+
+        try {
+            await cdo.withdraw.sendTransactionAsync(
+                mezzanineTrancheTokenIds[0], CONTRACT_OWNER, TX_DEFAULTS);
+            expect.fail(0, 0, "mezzanine tranche shouldn't be entitled to anything");
+        } catch (e) {
+            // do nothing
+        }
+    });
+
+    it("should allow mezzanine withdrawls when 70% of repayments have been made", async () => {
+        /* from Expectations: As an illustrative example, if the total
+         * amount of principal + interest that is expected to flow into a
+         * CDO is $10, and only $7 has been repaid, each of the 6 Senior
+         * Tranche token holders will be entitled to receive $1 each,
+         * whereas each of the 4 Mezzanine Tranche token holders will be
+         * entitled to receive $0.25 each. */
+
+        // previous tests have caused precisely 60% of repayments to be made.
+        // have debtors make 10% more of their expected repayments
+        for (let i = 0; i < agreementIds.length - 1; i++) {
+            const termEndTimestamp =
+                await termsContract.getTermEndTimestamp.callAsync(
+                    agreementIds[i]);
+
+            const repaymentValue =
+                await termsContract.getExpectedRepaymentValue.callAsync(
+                    agreementIds[i], termEndTimestamp);
+
+            const repaymentAmount = repaymentValue.times(1).dividedBy(10); // 10%
 
             await repaymentRouter.repay.sendTransactionAsync(
                 agreementIds[i],
