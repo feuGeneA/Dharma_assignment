@@ -409,60 +409,86 @@ contract("Collateralized Debt Obligation", async (ACCOUNTS) => {
     });
 
     it("should accept repayments", async () => {
+        // have all debtors repay 30% of their total expected repayment
+
         const cdoBalanceBefore = await principalToken.balanceOf.callAsync(cdo.address);
 
-        await repaymentRouter.repay.sendTransactionAsync(
-            agreementIds[1],
-            Units.ether(1), // amount
-            principalToken.address, // token type
-            { from: DEBTORS[1] },
-        );
+        let repaid = new BigNumber(0);
+
+        for (let i = 0; i < agreementIds.length - 1; i++) {
+            const termEndTimestamp =
+                await termsContract.getTermEndTimestamp.callAsync(
+                    agreementIds[i]);
+
+            const repaymentValue =
+                await termsContract.getExpectedRepaymentValue.callAsync(
+                    agreementIds[i], termEndTimestamp);
+
+            const repaymentAmount = repaymentValue.times(3).dividedBy(10);
+
+            await repaymentRouter.repay.sendTransactionAsync(
+                agreementIds[i],
+                repaymentAmount, // amount
+                principalToken.address, // token type
+                { from: DEBTORS[i] },
+            );
+
+            repaid = repaid.plus(repaymentAmount);
+        }
 
         await expect(
             principalToken.balanceOf.callAsync(cdo.address),
-        ).to.eventually.bignumber.equal(cdoBalanceBefore.plus(Units.ether(1)));
+        ).to.eventually.bignumber.equal(cdoBalanceBefore.plus(repaid));
     });
 
-    it("should make repayments immediately available for withdrawl", async () => {
+    it("should allow withdrawl of repayments", async () => {
         const seniorBalanceBefore =
             await principalToken.balanceOf.callAsync(CONTRACT_OWNER);
 
-        await cdo.withdraw.sendTransactionAsync(seniorTrancheTokenIds[0], CONTRACT_OWNER, TX_DEFAULTS);
+        await cdo.withdraw.sendTransactionAsync(
+            seniorTrancheTokenIds[0], CONTRACT_OWNER, TX_DEFAULTS);
 
         const seniorBalanceAfter =
             await principalToken.balanceOf.callAsync(CONTRACT_OWNER);
 
+        const expectedWithdrawl =
+            (await cdo.expectedRepayment.callAsync())
+                .times(3).dividedBy(10) // 30% repaid; all of it goes to seniors
+                .dividedBy(6); // there are 6 seniors
+
         expect(
             seniorBalanceAfter
                 .minus(seniorBalanceBefore)
-                .minus(Units.ether(1).dividedBy(6)),
-        ).to.bignumber.lessThan(1);
+                .minus(expectedWithdrawl),
+        ).to.be.bignumber.equal(0);
     });
 
     // should allow withdrawl only by tranche token owner
 
-    // it("should pay senior in full and mezzanine in part when 70% of principal has been repaid", async () => {
+    it("should deny mezzanine withdrawls when only 30% of repayments have occurred", async () => {
+        /* from Expectations:  As an illustrative example, if the total
+         * amount of principal + interest that is expected to flow into a
+         * CDO is $10, and only ... $3 has been repaid, the Senior Tranche
+         * token holders will be entitled to $0.50 each, while the
+         * Mezzanine Tranche token holders will be entitled to nothing. */
+
+        // previous tests have caused precisely 30% of repayments to be made
+        try {
+            await cdo.withdraw.sendTransactionAsync(
+                mezzanineTrancheTokenIds[0], CONTRACT_OWNER, TX_DEFAULTS);
+            expect.fail(0, 0, "mezzanine tranche shouldn't be entitled to anything");
+        } catch (e) {
+            // do nothing
+        }
+    });
+
+    // should allow mezzanine withdrawls when 70% of repayments have been made
         /* from Expectations: As an illustrative example, if the total
          * amount of principal + interest that is expected to flow into a
          * CDO is $10, and only $7 has been repaid, each of the 6 Senior
          * Tranche token holders will be entitled to receive $1 each,
          * whereas each of the 4 Mezzanine Tranche token holders will be
          * entitled to receive $0.25 each. */
-
-        /**
-         * - have debtors repay 70% of the debt
-         * - withdraw $1 from each senior tranche holder
-         * - withdraw $0.25 from each senior tranche holder
-         */
-    // });
-
-    // it("should pay only senior tranche when only 30% of principal has been repaid", async () => {
-        /* from Expectations:  As an illustrative example, if the total
-         * amount of principal + interest that is expected to flow into a
-         * CDO is $10, and only ... $3 has been repaid, the Senior Tranche
-         * token holders will be entitled to $0.50 each, while the
-         * Mezzanine Tranche token holders will be entitled to nothing. */
-    // });
 
     /* to transfer ownership of a DebtToken, consider using
      * debtToken.transfer like in test/ts/unit/("user transfers token he
