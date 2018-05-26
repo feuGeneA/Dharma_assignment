@@ -199,31 +199,27 @@ contract CDO is ERC721Receiver {
 
         if (unallocatedEntitlements > 0) {
 
-            if (remainingExpectedSeniorPayout() > seniors.length) {
+            if (remainingExpectedSeniorPayout() > 0) {
                 uint unallocatedSeniorEntitlements =
                     (remainingExpectedSeniorPayout() < unallocatedEntitlements)
                     ? remainingExpectedSeniorPayout() : unallocatedEntitlements;
 
                 for (uint i=0; i < seniors.length; i++) {
-                    entitlements[seniors[i]] +=
+                    uint additionalEntitlement =
                         unallocatedSeniorEntitlements/seniors.length;
-                    unallocatedEntitlements -= entitlements[seniors[i]];
+                    entitlements[seniors[i]] += additionalEntitlement;
+                    unallocatedEntitlements -= additionalEntitlement;
                 }
             }
 
-            if (unallocatedEntitlements > mezzanine.length) {
+            if (unallocatedEntitlements > 0) {
                 for (uint j=0; j < mezzanine.length; j++) {
-                    entitlements[mezzanine[i]] +=
+                    additionalEntitlement =
                         unallocatedEntitlements/mezzanine.length;
-                    unallocatedEntitlements -= entitlements[mezzanine[i]];
+                    entitlements[mezzanine[j]] += additionalEntitlement;
+                    unallocatedEntitlements -= additionalEntitlement;
                 }
             }
-
-            // potential problem: there could be tiny bits of repayment left in
-            // here, left over from division truncation, and there's currently
-            // no way for the contract owner to retrieve it or do anything with
-            // it, so it seems those tiny bits are stuck in this contract
-            // forever.
         }
 
         // done updating `entitlements`

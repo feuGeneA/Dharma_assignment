@@ -482,7 +482,7 @@ contract("Collateralized Debt Obligation", async (ACCOUNTS) => {
         }
     });
 
-    // should allow mezzanine withdrawls when 70% of repayments have been made
+    it("should allow mezzanine withdrawls when 70% of repayments have been made", async () => {
         /* from Expectations: As an illustrative example, if the total
          * amount of principal + interest that is expected to flow into a
          * CDO is $10, and only $7 has been repaid, each of the 6 Senior
@@ -490,7 +490,36 @@ contract("Collateralized Debt Obligation", async (ACCOUNTS) => {
          * whereas each of the 4 Mezzanine Tranche token holders will be
          * entitled to receive $0.25 each. */
 
-    /* to transfer ownership of a DebtToken, consider using
-     * debtToken.transfer like in test/ts/unit/("user transfers token he
-     * owns").  */
+        // previous tests have caused precisely 30% of repayments to be made.
+        // have debtors make 40% more of their expected repayments
+        for (let i = 0; i < agreementIds.length - 1; i++) {
+            const termEndTimestamp =
+                await termsContract.getTermEndTimestamp.callAsync(
+                    agreementIds[i]);
+
+            const repaymentValue =
+                await termsContract.getExpectedRepaymentValue.callAsync(
+                    agreementIds[i], termEndTimestamp);
+
+            const repaymentAmount = repaymentValue.times(4).dividedBy(10); // 40%
+
+            await repaymentRouter.repay.sendTransactionAsync(
+                agreementIds[i],
+                repaymentAmount, // amount
+                principalToken.address, // token type
+                { from: DEBTORS[i] },
+            );
+        }
+
+        const mezzanineBalanceBefore =
+            await principalToken.balanceOf.callAsync(CONTRACT_OWNER);
+
+        await cdo.withdraw.sendTransactionAsync(
+            mezzanineTrancheTokenIds[0], CONTRACT_OWNER, TX_DEFAULTS);
+
+        const mezzanineBalanceAfter =
+            await principalToken.balanceOf.callAsync(CONTRACT_OWNER);
+
+        expect(mezzanineBalanceAfter.greaterThan(mezzanineBalanceBefore));
+    });
 });
