@@ -90,19 +90,13 @@ contract("Collateralized Debt Obligation", async (ACCOUNTS) => {
 
     const CONTRACT_OWNER = ACCOUNTS[0];
 
-    const DEBTORS = [
-        ACCOUNTS[1],
-        ACCOUNTS[2],
-        ACCOUNTS[3],
-        ACCOUNTS[4]];
+    const DEBTORS =
+        ACCOUNTS.slice(1, ACCOUNTS.length/2-1);
 
-    const CREDITORS = [
-        ACCOUNTS[5],
-        ACCOUNTS[6],
-        ACCOUNTS[7],
-        ACCOUNTS[8]];
+    const CREDITORS =
+        ACCOUNTS.slice(ACCOUNTS.length/2, ACCOUNTS.length-2);
 
-    const PAYER = ACCOUNTS[9];
+    const PAYER = ACCOUNTS[19];
 
     const NULL_ADDRESS = "0x0000000000000000000000000000000000000000";
 
