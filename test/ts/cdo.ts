@@ -14,7 +14,7 @@ import { DebtTokenContract } from "../../types/generated/debt_token";
 import { DummyTokenContract } from "../../types/generated/dummy_token";
 import { TokenRegistryContract } from "../../types/generated/token_registry";
 import { RepaymentRouterContract } from "../../types/generated/repayment_router";
-import { SimpleInterestTermsContractContract as SimpleInterestTermsContract } from "../../types/generated/simple_interest_terms_contract";
+import { SimpleInterestTermsContractContract as SimpleInterestTermsContract } from "../../types/generated/simple_interest_terms_contract"; // tslint:disable-line:max-line-length
 import { TokenTransferProxyContract } from "../../types/generated/token_transfer_proxy";
 
 import { DebtKernelErrorCodes } from "../../types/errors";
@@ -31,6 +31,11 @@ import { TxDataPayable } from "../../types/common";
 
 import leftPad = require("left-pad");
 
+import { CDOFactoryContract } from "../../types/generated/c_d_o_factory";
+import { CDOContract } from "../../types/generated/cdo";
+import { TrancheTokenContract } from "../../types/generated/tranche_token";
+import { TermsContractContract as TermsContract } from "../../types/generated/terms_contract";
+
 // Configure BigNumber exponentiation
 BigNumberSetup.configure();
 
@@ -40,6 +45,30 @@ const expect = chai.expect;
 
 const simpleInterestTermsContract = artifacts.require("SimpleInterestTermsContract");
 
+contract("Tranche token", (ACCOUNTS) => {
+    const CONTRACT_OWNER = ACCOUNTS[0];
+    const TX_DEFAULTS = { from: CONTRACT_OWNER, gas: 4000000 };
+
+    let trancheTokenContract: TrancheTokenContract;
+
+    before(async () => {
+        trancheTokenContract = await TrancheTokenContract.deployed(web3, TX_DEFAULTS);
+    });
+
+    it("should cleanly create()", async () => {
+        const tokenId1 =
+            await trancheTokenContract.create.sendTransactionAsync(
+                CONTRACT_OWNER, CONTRACT_OWNER, TX_DEFAULTS);
+        expect(tokenId1).to.be.a("string");
+
+        const tokenId2 =
+            await trancheTokenContract.create.sendTransactionAsync(
+                CONTRACT_OWNER, CONTRACT_OWNER, TX_DEFAULTS);
+        expect(tokenId2).to.be.a("string");
+        expect(tokenId2).to.not.equal(tokenId1);
+    });
+});
+
 contract("Collateralized Debt Obligation", async (ACCOUNTS) => {
     let repaymentRouter: RepaymentRouterContract;
     let kernel: DebtKernelContract;
@@ -47,22 +76,27 @@ contract("Collateralized Debt Obligation", async (ACCOUNTS) => {
     let principalToken: DummyTokenContract;
     let termsContract: SimpleInterestTermsContract;
     let tokenTransferProxy: TokenTransferProxyContract;
+    let cdoFactory: CDOFactoryContract;
+    let trancheToken: TrancheTokenContract;
 
     let orderFactory: DebtOrderFactory;
 
+    let cdo: CDOContract;
+
+    const agreementIds: string[] = new Array();
+
+    const seniorTrancheTokenIds: BigNumber[] = new Array();
+    const mezzanineTrancheTokenIds: BigNumber[] = new Array();
+
     const CONTRACT_OWNER = ACCOUNTS[0];
 
-    const DEBTOR_1 = ACCOUNTS[1];
-    const DEBTOR_2 = ACCOUNTS[2];
-    const DEBTOR_3 = ACCOUNTS[3];
-    const DEBTORS = [DEBTOR_1, DEBTOR_2, DEBTOR_3];
+    const DEBTORS =
+        ACCOUNTS.slice(1, ACCOUNTS.length/2-1);
 
-    const CREDITOR_1 = ACCOUNTS[4];
-    const CREDITOR_2 = ACCOUNTS[5];
-    const CREDITOR_3 = ACCOUNTS[6];
-    const CREDITORS = [CREDITOR_1, CREDITOR_2, CREDITOR_3];
+    const CREDITORS =
+        ACCOUNTS.slice(ACCOUNTS.length/2, ACCOUNTS.length-2);
 
-    const PAYER = ACCOUNTS[7];
+    const PAYER = ACCOUNTS[19];
 
     const NULL_ADDRESS = "0x0000000000000000000000000000000000000000";
 
@@ -84,42 +118,29 @@ contract("Collateralized Debt Obligation", async (ACCOUNTS) => {
         tokenTransferProxy = await TokenTransferProxyContract.deployed(web3, TX_DEFAULTS);
         termsContract = await SimpleInterestTermsContract.deployed(web3, TX_DEFAULTS);
         repaymentRouter = await RepaymentRouterContract.deployed(web3, TX_DEFAULTS);
+        cdoFactory = await CDOFactoryContract.deployed(web3, TX_DEFAULTS);
+        trancheToken = await TrancheTokenContract.deployed(web3, TX_DEFAULTS);
 
-        await principalToken.setBalance.sendTransactionAsync(CREDITOR_1, Units.ether(100));
-        await principalToken.setBalance.sendTransactionAsync(CREDITOR_2, Units.ether(100));
-        await principalToken.setBalance.sendTransactionAsync(CREDITOR_3, Units.ether(100));
+        for (const CREDITOR of CREDITORS) {
+            await principalToken.setBalance.sendTransactionAsync(
+                CREDITOR, Units.ether(100));
+        }
 
-        await principalToken.approve.sendTransactionAsync(
-            tokenTransferProxy.address,
-            Units.ether(100),
-            { from: DEBTOR_1 },
-        );
-        await principalToken.approve.sendTransactionAsync(
-            tokenTransferProxy.address,
-            Units.ether(100),
-            { from: DEBTOR_2 },
-        );
-        await principalToken.approve.sendTransactionAsync(
-            tokenTransferProxy.address,
-            Units.ether(100),
-            { from: DEBTOR_3 },
-        );
+        for (const DEBTOR of DEBTORS) {
+            await principalToken.approve.sendTransactionAsync(
+                tokenTransferProxy.address,
+                Units.ether(100),
+                { from: DEBTOR },
+            );
+        }
 
-        await principalToken.approve.sendTransactionAsync(
-            tokenTransferProxy.address,
-            Units.ether(100),
-            { from: CREDITOR_1 },
-        );
-        await principalToken.approve.sendTransactionAsync(
-            tokenTransferProxy.address,
-            Units.ether(100),
-            { from: CREDITOR_2 },
-        );
-        await principalToken.approve.sendTransactionAsync(
-            tokenTransferProxy.address,
-            Units.ether(100),
-            { from: CREDITOR_3 },
-        );
+        for (const CREDITOR of CREDITORS) {
+            await principalToken.approve.sendTransactionAsync(
+                tokenTransferProxy.address,
+                Units.ether(100),
+                { from: CREDITOR },
+            );
+        }
 
         const termsContractParameters = SimpleInterestParameters.pack({
             principalTokenIndex: dummyREPTokenIndex, // Our migrations set REP up to be at index 0 of the registry
@@ -134,7 +155,7 @@ contract("Collateralized Debt Obligation", async (ACCOUNTS) => {
             debtKernelContract: kernel.address,
             debtOrderVersion: kernel.address,
             debtTokenContract: debtToken.address,
-            debtor: DEBTOR_1,
+            debtor: DEBTORS[0],
             debtorFee: Units.ether(0),
             expirationTimestampInSec: new BigNumber(
                 moment()
@@ -142,7 +163,7 @@ contract("Collateralized Debt Obligation", async (ACCOUNTS) => {
                     .unix(),
             ),
             issuanceVersion: repaymentRouter.address,
-            orderSignatories: { debtor: DEBTOR_1, creditor: CREDITOR_1 },
+            orderSignatories: { debtor: DEBTORS[0], creditor: CREDITORS[0] },
             principalAmount: Units.ether(1),
             principalTokenAddress: principalToken.address,
             relayer: NULL_ADDRESS,
@@ -156,31 +177,18 @@ contract("Collateralized Debt Obligation", async (ACCOUNTS) => {
 
         orderFactory = new DebtOrderFactory(defaultOrderParams);
 
-        ABIDecoder.addABI(repaymentRouter.abi);
-    });
-
-    after(() => {
-        ABIDecoder.removeABI(repaymentRouter.abi);
-    });
-
-    describe("Example Tests", () => {
-        let signedDebtOrder: SignedDebtOrder;
-        let agreementId: string;
-        let receipt: Web3.TransactionReceipt;
-
-        before(async () => {
-            // NOTE: For purposes of this assignment, we hard code a default principal + interest amount of 1.1 ether
-            // If you're interested in how to vary this amount, poke around in the setup code above :)
-            signedDebtOrder = await orderFactory.generateDebtOrder({
-                creditor: CREDITOR_2,
-                debtor: DEBTOR_2,
-                orderSignatories: { debtor: DEBTOR_2, creditor: CREDITOR_2 },
+        for (let i = 0; i < DEBTORS.length; i++) {
+            const signedDebtOrder = await orderFactory.generateDebtOrder({
+                creditor: CREDITORS[i],
+                debtor: DEBTORS[i],
+                orderSignatories: {
+                    debtor: DEBTORS[i],
+                    creditor: CREDITORS[i] },
             });
 
-            // The unique id we use to refer to the debt agreement is the hash of its associated issuance commitment.
-            agreementId = signedDebtOrder.getIssuanceCommitment().getHash();
+            agreementIds.push(
+                signedDebtOrder.getIssuanceCommitment().getHash());
 
-            // Creditor fills the signed debt order, creating a debt agreement with a unique associated debt token
             const txHash = await kernel.fillDebtOrder.sendTransactionAsync(
                 signedDebtOrder.getCreditor(),
                 signedDebtOrder.getOrderAddresses(),
@@ -191,40 +199,367 @@ contract("Collateralized Debt Obligation", async (ACCOUNTS) => {
                 signedDebtOrder.getSignaturesS(),
             );
 
-            receipt = await web3.eth.getTransactionReceipt(txHash);
-        });
+            // transfer debt to loan aggregator
+            await debtToken.transfer.sendTransactionAsync(
+                CONTRACT_OWNER, // to
+                new BigNumber(agreementIds[i]), // tokenId
+                { from: CREDITORS[i]});
+        }
 
-        it("should issue creditor a unique debt token", async () => {
+        ABIDecoder.addABI(repaymentRouter.abi);
+        ABIDecoder.addABI(cdoFactory.abi);
+    });
+
+    after(() => {
+        ABIDecoder.removeABI(repaymentRouter.abi);
+        ABIDecoder.removeABI(cdoFactory.abi);
+    });
+
+    it("should instantiate cleanly", async () => {
+        const txHash =
+            await cdoFactory.create.sendTransactionAsync(
+                termsContract.address,
+                trancheToken.address,
+                principalToken.address,
+                TX_DEFAULTS);
+
+        const txReceipt = await web3.eth.getTransactionReceipt(txHash);
+
+        for (const log of ABIDecoder.decodeLogs(txReceipt.logs)) {
+            if (log && log.name === "CDOCreated") {
+                for (const event of log.events) {
+                    if (event.name === "cdo") {
+                        cdo = await CDOContract.at(
+                            String(event.value),
+                            web3,
+                            TX_DEFAULTS);
+                    }
+                }
+            }
+        }
+    });
+
+    it("should not be finalized just after instantiation", async () => {
+        await expect(cdo.finalized.callAsync()).to.eventually.equal(false);
+    });
+
+    it("should not allow finalization without any underlying debts", async () => {
+        try {
+            await cdo.finalize.sendTransactionAsync(TX_DEFAULTS);
+            expect.fail(0, 0, "CDO.finalize() should have failed a require()");
+        } catch (e) {
+            await expect(cdo.finalized.callAsync()).to.eventually.equal(false);
+        }
+    });
+
+    it("should disallow collateralization by anyone other than the CDO creator", async () => {
+        await expect(
+            debtToken.ownerOf.callAsync(new BigNumber(agreementIds[0])),
+        ).to.eventually.equal(CONTRACT_OWNER);
+
+        // debt needs to be held by someone else for this test
+        await debtToken.transfer.sendTransactionAsync(
+            CREDITORS[0], // to
+            new BigNumber(agreementIds[0]), // tokenId
+            { from: CONTRACT_OWNER });
+
+        // now have creditor try to collateralize
+        try {
+            await debtToken.transfer.sendTransactionAsync(
+                cdo.address, // to
+                new BigNumber(agreementIds[0]), // tokenId
+                { from: CREDITORS[0] });
+
+            expect.fail(0, 0, "CDO.onERC721Received should have failed a require()");
+        } catch (e) {
+            // put debt back to CONTRACT_OWNER for subsequent tests
+            await debtToken.transfer.sendTransactionAsync(
+                CONTRACT_OWNER, // to
+                new BigNumber(agreementIds[0]), // tokenId
+                { from: CREDITORS[0] });
+        }
+    });
+
+    it("should allow collateralization", async () => {
+        // only send the first two debt tokens, so that subsequent tests can
+        // verify behavior around incomplete collateralization.
+        for (let i = 0; i < Math.min(agreementIds.length, 2); i++) {
+            const nAgreementId = new BigNumber(agreementIds[i]);
+
+            await debtToken.transfer.sendTransactionAsync(
+                cdo.address, // to
+                nAgreementId, // tokenId
+                { from: CONTRACT_OWNER });
+
             await expect(
-                debtToken.ownerOf.callAsync(new BigNumber(agreementId)),
-            ).to.eventually.equal(CREDITOR_2);
-        });
+                debtToken.ownerOf.callAsync(nAgreementId),
+            ).to.eventually.equal(cdo.address);
 
-        it("should allow debtor to make repayment", async () => {
-            const creditorBalanceBefore = await principalToken.balanceOf.callAsync(CREDITOR_2);
+            const collateralTokenId: BigNumber
+                = await cdo.underlyingDebts.callAsync(new BigNumber(i));
+
+            expect(collateralTokenId.equals(nAgreementId)).to.be.true;
+
+            // TODO: confirm that cdo.expectedRepayment accumulates appropriately
+        }
+    });
+
+    it("should not allow finalization with fewer than three underlying debts", async () => {
+        // previous test only sent two debts as collateral
+        try {
+            await cdo.finalize.sendTransactionAsync(TX_DEFAULTS);
+            expect.fail(0, 0, "CDO.finalize() should have failed a require()");
+        } catch (e) {
+            await expect(cdo.finalized.callAsync()).to.eventually.equal(false);
+        }
+    });
+
+    it("should allow only CDO creator to finalize", async () => {
+        // send the remaining debts, except for the last one, which is being
+        // held back for the subsequent test of collateralization after
+        // finalization.
+        for (let i = Math.min(agreementIds.length - 1, 2); i < agreementIds.length - 1; i++) {
+            await debtToken.transfer.sendTransactionAsync(
+                cdo.address, // to
+                new BigNumber(agreementIds[i]), // tokenId
+                { from: CONTRACT_OWNER });
+        }
+
+        try {
+            await cdo.finalize.sendTransactionAsync(
+                { from: DEBTORS[0], gas: TX_DEFAULTS.gas });
+            expect.fail(0, 0, "CDO.finalize() should have failed a require()");
+        } catch (e) {
+            await expect(cdo.finalized.callAsync()).to.eventually.equal(false);
+        }
+    });
+
+    it("should finalize cleanly", async () => {
+        const txHash = await cdo.finalize.sendTransactionAsync(TX_DEFAULTS);
+        await expect(cdo.finalized.callAsync()).to.eventually.equal(true);
+
+        const txReceipt = await web3.eth.getTransactionReceipt(txHash);
+
+        ABIDecoder.addABI(cdo.abi);
+        for (const log of ABIDecoder.decodeLogs(txReceipt.logs)) {
+            if (log && log.name === "CDOFinalized") {
+                for (const event of log.events) {
+                    if (event.name === "seniorTrancheTokenIds") {
+                        // weird but i can't seem to iterate over these.
+                        // also, typescript compiler complains:
+                        // test/ts/cdo.ts(450,52): error TS7017: Element
+                        //     implicitly has an 'any' type because type
+                        //     'string | boolean' has no index signature.
+                        // not sure what to do about it.
+                        seniorTrancheTokenIds.push(event.value[0]);
+                        seniorTrancheTokenIds.push(event.value[1]);
+                        seniorTrancheTokenIds.push(event.value[2]);
+                        seniorTrancheTokenIds.push(event.value[3]);
+                        seniorTrancheTokenIds.push(event.value[4]);
+                        seniorTrancheTokenIds.push(event.value[5]);
+                    }
+                    if (event.name === "mezzanineTrancheTokenIds") {
+                        // weird but i can't seem to iterate over these.
+                        // also, typescript compiler complains:
+                        // test/ts/cdo.ts(450,52): error TS7017: Element
+                        //     implicitly has an 'any' type because type
+                        //     'string | boolean' has no index signature.
+                        // not sure what to do about it.
+                        mezzanineTrancheTokenIds.push(event.value[0]);
+                        mezzanineTrancheTokenIds.push(event.value[1]);
+                        mezzanineTrancheTokenIds.push(event.value[2]);
+                        mezzanineTrancheTokenIds.push(event.value[3]);
+                    }
+                }
+            }
+        }
+        ABIDecoder.removeABI(cdo.abi);
+    });
+
+    it("should not allow further collateralization after finalization", async () => {
+        // use the final debt token, which wasn't sent to the CDO in any
+        // previous tests.
+        try {
+            await debtToken.transfer.sendTransactionAsync(
+                cdo.address, // to
+                new BigNumber(agreementIds[agreementIds.length - 1]), // tokenId
+                { from: CONTRACT_OWNER });
+            expect.fail(0, 0, "CDO.onERC721Received should have failed a require()");
+        } catch (e) {
+            // do nothing
+        }
+    });
+
+    it("should disallow withdrawl when tranche is not entitled to anything", async () => {
+        try {
+            await cdo.withdraw.sendTransactionAsync(
+                seniorTrancheTokenIds[0],
+                CONTRACT_OWNER,
+                TX_DEFAULTS);
+            expect.fail(0, 0, "CDO.withdraw should have failed a require()");
+        } catch (e) {
+            // do nothing
+        }
+    });
+
+    it("should accept repayments", async () => {
+        // have all debtors repay 30% of their total expected repayment
+
+        const cdoBalanceBefore = await principalToken.balanceOf.callAsync(cdo.address);
+
+        let repaid = new BigNumber(0);
+
+        for (let i = 0; i < agreementIds.length - 1; i++) {
+            const termEndTimestamp =
+                await termsContract.getTermEndTimestamp.callAsync(
+                    agreementIds[i]);
+
+            const repaymentValue =
+                await termsContract.getExpectedRepaymentValue.callAsync(
+                    agreementIds[i], termEndTimestamp);
+
+            const repaymentAmount = repaymentValue.times(3).dividedBy(10);
 
             await repaymentRouter.repay.sendTransactionAsync(
-                agreementId,
-                Units.ether(1), // amount
+                agreementIds[i],
+                repaymentAmount, // amount
                 principalToken.address, // token type
-                { from: DEBTOR_2 },
+                { from: DEBTORS[i] },
             );
 
-            await expect(
-                principalToken.balanceOf.callAsync(CREDITOR_2),
-            ).to.eventually.bignumber.equal(creditorBalanceBefore.plus(Units.ether(1)));
-        });
+            repaid = repaid.plus(repaymentAmount);
+        }
 
-        it("should allow creditor to transfer debt token to different address", async () => {
-            await debtToken.transfer.sendTransactionAsync(
-                CREDITOR_1, // to
-                new BigNumber(agreementId), // tokenId
-                { from: CREDITOR_2 },
+        await expect(
+            principalToken.balanceOf.callAsync(cdo.address),
+        ).to.eventually.bignumber.equal(cdoBalanceBefore.plus(repaid));
+    });
+
+    it("should allow withdrawl of repayments", async () => {
+        const seniorBalanceBefore =
+            await principalToken.balanceOf.callAsync(CONTRACT_OWNER);
+
+        await cdo.withdraw.sendTransactionAsync(
+            seniorTrancheTokenIds[0], CONTRACT_OWNER, TX_DEFAULTS);
+
+        const seniorBalanceAfter =
+            await principalToken.balanceOf.callAsync(CONTRACT_OWNER);
+
+        const expectedWithdrawl =
+            (await cdo.expectedRepayment.callAsync())
+                .times(3).dividedBy(10) // 30% repaid; all of it goes to seniors
+                .dividedBy(6); // there are 6 seniors
+
+        expect(
+            seniorBalanceAfter
+                .minus(seniorBalanceBefore)
+                .minus(expectedWithdrawl),
+        ).to.be.bignumber.equal(0);
+    });
+
+    // should allow withdrawl only by tranche token owner
+
+    it("should deny mezzanine withdrawls when only 30% of repayments have occurred", async () => {
+        /* from Expectations:  As an illustrative example, if the total
+         * amount of principal + interest that is expected to flow into a
+         * CDO is $10, and only ... $3 has been repaid, the Senior Tranche
+         * token holders will be entitled to $0.50 each, while the
+         * Mezzanine Tranche token holders will be entitled to nothing. */
+
+        // previous tests have caused precisely 30% of repayments to be made
+        try {
+            await cdo.withdraw.sendTransactionAsync(
+                mezzanineTrancheTokenIds[0], CONTRACT_OWNER, TX_DEFAULTS);
+            expect.fail(0, 0, "mezzanine tranche shouldn't be entitled to anything");
+        } catch (e) {
+            // do nothing
+        }
+    });
+
+    it("should deny mezzanine withdrawals when exactly 60% of repayments have occurred", async () => {
+        // previous tests have caused precisely 30% of repayments to be made.
+        // repay another 30%
+        for (let i = 0; i < agreementIds.length - 1; i++) {
+            const termEndTimestamp =
+                await termsContract.getTermEndTimestamp.callAsync(
+                    agreementIds[i]);
+
+            const repaymentValue =
+                await termsContract.getExpectedRepaymentValue.callAsync(
+                    agreementIds[i], termEndTimestamp);
+
+            const repaymentAmount = repaymentValue.times(3).dividedBy(10); // 30%
+
+            await repaymentRouter.repay.sendTransactionAsync(
+                agreementIds[i],
+                repaymentAmount, // amount
+                principalToken.address, // token type
+                { from: DEBTORS[i] },
             );
+        }
 
-            await expect(
-                debtToken.ownerOf.callAsync(new BigNumber(agreementId)),
-            ).to.eventually.equal(CREDITOR_1);
-        });
+        try {
+            await cdo.withdraw.sendTransactionAsync(
+                mezzanineTrancheTokenIds[0], CONTRACT_OWNER, TX_DEFAULTS);
+            expect.fail(0, 0, "mezzanine tranche shouldn't be entitled to anything");
+        } catch (e) {
+            // do nothing
+        }
+    });
+
+    it("should allow mezzanine withdrawls when 70% of repayments have been made", async () => {
+        /* from Expectations: As an illustrative example, if the total
+         * amount of principal + interest that is expected to flow into a
+         * CDO is $10, and only $7 has been repaid, each of the 6 Senior
+         * Tranche token holders will be entitled to receive $1 each,
+         * whereas each of the 4 Mezzanine Tranche token holders will be
+         * entitled to receive $0.25 each. */
+
+        // previous tests have caused precisely 60% of repayments to be made.
+        // have debtors make 10% more of their expected repayments
+        for (let i = 0; i < agreementIds.length - 1; i++) {
+            const termEndTimestamp =
+                await termsContract.getTermEndTimestamp.callAsync(
+                    agreementIds[i]);
+
+            const repaymentValue =
+                await termsContract.getExpectedRepaymentValue.callAsync(
+                    agreementIds[i], termEndTimestamp);
+
+            const repaymentAmount = repaymentValue.times(1).dividedBy(10); // 10%
+
+            await repaymentRouter.repay.sendTransactionAsync(
+                agreementIds[i],
+                repaymentAmount, // amount
+                principalToken.address, // token type
+                { from: DEBTORS[i] },
+            );
+        }
+
+        const mezzanineBalanceBefore =
+            await principalToken.balanceOf.callAsync(CONTRACT_OWNER);
+
+        await cdo.withdraw.sendTransactionAsync(
+            mezzanineTrancheTokenIds[0], CONTRACT_OWNER, TX_DEFAULTS);
+
+        const mezzanineBalanceAfter =
+            await principalToken.balanceOf.callAsync(CONTRACT_OWNER);
+
+        const totalExpectedRepayment =
+            await cdo.expectedRepayment.callAsync();
+
+        const expectedWithdrawl =
+            totalExpectedRepayment
+                .times(7).dividedBy(10) // 70% repaid to this point
+                .minus(
+                    totalExpectedRepayment
+                        .times(6).dividedBy(10)) // 60% goes to seniors
+                .dividedBy(4); // there are 4 mezzanine tranche holders
+
+        expect(
+            mezzanineBalanceAfter
+                .minus(mezzanineBalanceBefore)
+                .minus(expectedWithdrawl),
+        ).to.be.bignumber.equal(0);
     });
 });
