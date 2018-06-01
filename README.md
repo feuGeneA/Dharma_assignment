@@ -1,3 +1,11 @@
+This assignment was given to me as part of the interview process for a Software Engineer position at Dharma Labs.  Look at [Pull Request #1 on this repo](https://github.com/feuGeneA/Dharma_assignment/pull/1) to see my submission in isolation.
+
+The feedback on my submission was:  "Eugene -- awesome work on the submission.  I'm glad you saw the assignment through to the end -- I can tell you put a lot of work and thought into it.  I know it's a hard assignment -- that's very intentional :)"
+
+Ultimately, though, I did not land the position.  After 3 subsequent hours of interviews, the final feedback was: "Though we recognize that your technical acumen is undoubtedly up-to-par, we are concerned that your experience is much more systems-oriented than the layers of the stack that we primarily work with (i.e. Solidity / Javascript / Web applications).  Given that you would be joining us as our first remote hire as well, we felt that this would compound the difficulty of the technical onboarding process -- you'd have to get up to speed on a wholly new technical stack without having in-person access to the rest of the team.  For these reasons, we've decided that we will not move forward in the interview process.
+
+"I wish you the best of luck in your further endeavors -- I have no doubt you'll do amazing work wherever you end up."
+
 <img src="https://s3-us-west-2.amazonaws.com/dharma-assets/logo+orange.png"  width=300/>
 
 ------------
